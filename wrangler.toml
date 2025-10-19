@@ -1,10 +1,10 @@
-name = "knue-event-harvester"
+name = 'knue-event-harvester'
 main = "src/index.ts"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
 
 [triggers]
-crons = ["0 */4 * * *"]
+crons = ["5 0-10 * * 1-5"]
 
 [[kv_namespaces]]
 binding = "PROCESSED_STORE"
@@ -16,7 +16,8 @@ PREVIEW_PARSER_BASE = "https://knue-www-preview-parser-cf.kangdongouk.workers.de
 OPENAI_CONTENT_MODEL = "gpt-4o-mini"
 OPENAI_VISION_MODEL = "gpt-4o-mini"
 SIMILARITY_THRESHOLD = "0.85"
-LOOKBACK_DAYS = "60"
+LOOKBACK_DAYS = "30"
+GOOGLE_CALENDAR_ID = "b71b5c37386baf51a196b6a1de3013726b55f51aa571d583f477cdacaf12bd5d@group.calendar.google.com"
 
 [env.preview.vars]
 SIMILARITY_THRESHOLD = "0.8"
