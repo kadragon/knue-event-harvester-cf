@@ -1,10 +1,11 @@
-import type { AiSummary } from "../types";
-import type { PreviewContent } from "./preview";
+import type { AiSummary, PreviewContent } from "../types";
 
 export interface AiEnv {
   OPENAI_API_KEY: string;
   OPENAI_CONTENT_MODEL: string;
   OPENAI_VISION_MODEL?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_AI_GATEWAY_NAME?: string;
 }
 
 interface OpenAIResponse {
@@ -21,6 +22,15 @@ const JSON_FALLBACK: AiSummary = {
   actionItems: [],
   links: [],
 };
+
+function buildOpenAIEndpoint(env: AiEnv): string {
+  // Cloudflare AI Gateway 사용 설정
+  if (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_GATEWAY_NAME) {
+    return `https://gateway.ai.cloudflare.com/v1/account/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/${env.CLOUDFLARE_AI_GATEWAY_NAME}/openai/chat/completions`;
+  }
+  // AI Gateway 미설정시 OpenAI 직접 호출
+  return "https://api.openai.com/v1/chat/completions";
+}
 
 function buildHeaders(apiKey: string): HeadersInit {
   return {
@@ -79,7 +89,8 @@ export async function extractTextFromImage(
     response_format: { type: "json_object" },
   };
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const endpoint = buildOpenAIEndpoint(env);
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: buildHeaders(env.OPENAI_API_KEY),
     body: JSON.stringify(payload),
@@ -130,7 +141,8 @@ export async function generateSummary(
     temperature: 0.2,
   };
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const endpoint = buildOpenAIEndpoint(env);
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: buildHeaders(env.OPENAI_API_KEY),
     body: JSON.stringify(payload),

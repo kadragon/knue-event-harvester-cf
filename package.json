@@ -7,14 +7,25 @@
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",
     "test": "vitest --run",
-    "lint": "tsc --noEmit"
+    "test:coverage": "vitest --run --coverage",
+    "test:coverage:ui": "vitest --run --coverage --reporter=html",
+    "lint": "tsc --noEmit",
+    "prepare": "husky"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.8.10"
   },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "tsc --noEmit"
+    ]
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240903.0",
     "@types/node": "^20.16.5",
+    "@vitest/coverage-v8": "^1.6.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.4",
     "typescript": "^5.4.5",
     "vitest": "^1.5.3",
     "wrangler": "^3.76.0"

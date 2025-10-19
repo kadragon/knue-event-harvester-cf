@@ -8,8 +8,8 @@ crons = ["0 */4 * * *"]
 
 [[kv_namespaces]]
 binding = "PROCESSED_STORE"
-id = "<production-kv-id>"
-preview_id = "<preview-kv-id>"
+id = "68a5f081c9544cbe975b7de5f29118b1"
+preview_id = "f2c768d9033e4a848a5b0607739a6912"
 
 [vars]
 PREVIEW_PARSER_BASE = "https://knue-www-preview-parser-cf.kangdongouk.workers.dev/"

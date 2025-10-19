@@ -8,7 +8,7 @@ import {
 } from "./lib/calendar";
 import { isDuplicate, computeHash } from "./lib/dedupe";
 import { htmlToText } from "./lib/html";
-import { fetchPreviewContent, resolveAttachmentText, type EnvBindings } from "./lib/preview";
+import { fetchPreviewContent, resolveAttachmentText, getFileType, type EnvBindings } from "./lib/preview";
 import { parseRss } from "./lib/rss";
 import { getProcessedRecord, putProcessedRecord, type StateEnv } from "./lib/state";
 import type { AiSummary, CalendarEventInput, ProcessedRecord, RssItem } from "./types";
@@ -17,6 +17,8 @@ interface Env extends StateEnv, CalendarEnv, EnvBindings, AiEnv {
   OPENAI_API_KEY: string;
   OPENAI_CONTENT_MODEL: string;
   OPENAI_VISION_MODEL?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_AI_GATEWAY_NAME?: string;
   SIMILARITY_THRESHOLD?: string;
   LOOKBACK_DAYS?: string;
   GOOGLE_CALENDAR_ID: string;
@@ -92,15 +94,37 @@ async function processNewItem(
   const plainText = htmlToText(item.descriptionHtml);
   const attachmentText = resolveAttachmentText(item);
 
-  const preview = await fetchPreviewContent(item.attachment?.preview, env);
   let previewText: string | undefined;
-  if (preview.sourceType === "text") {
-    previewText = htmlToText(preview.text ?? "");
-  }
   let imageText: string | undefined;
-  if (preview.sourceType === "image") {
-    imageText = await extractTextFromImage(env, preview);
+
+  // 첨부파일 타입에 따라 다르게 처리
+  const fileType = getFileType(item.attachment?.filename);
+
+  if (fileType === "image") {
+    // 이미지: OCR 처리
+    const preview = await fetchPreviewContent(item.attachment?.preview, env);
+    if (preview.sourceType === "image") {
+      imageText = await extractTextFromImage(env, preview);
+    }
+  } else if (fileType === "pdf" || fileType === "hwp" || fileType === "doc") {
+    // PDF/HWP/DOC: preview parser로 텍스트 추출
+    const preview = await fetchPreviewContent(item.attachment?.preview, env);
+    if (preview.sourceType === "text") {
+      previewText = htmlToText(preview.text ?? "");
+    } else if (preview.sourceType === "binary") {
+      // binary는 파일 형식이지만 텍스트로 처리 시도
+      console.log(`Document file (${fileType}) returned as binary for ${item.id}`);
+    }
+  } else if (item.attachment?.preview) {
+    // 기타 파일 타입: 기존 로직대로 처리
+    const preview = await fetchPreviewContent(item.attachment.preview, env);
+    if (preview.sourceType === "text") {
+      previewText = htmlToText(preview.text ?? "");
+    } else if (preview.sourceType === "image") {
+      imageText = await extractTextFromImage(env, preview);
+    }
   }
+
   const extraText = previewText ?? imageText ?? "";
   const aiSummary = await generateSummary(env, {
     title: item.title,
@@ -159,7 +183,7 @@ async function processNewItem(
   return created;
 }
 
-type GoogleCalendarEvent = Awaited<ReturnType<typeof createEvent>>;
+
 
 async function run(env: Env): Promise<{ processed: number; created: number }> {
   const rssXml = await fetchRssFeed();

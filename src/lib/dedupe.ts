@@ -33,21 +33,20 @@ function normalizeText(text: string | undefined): string {
   return (text ?? "").replace(/\s+/g, " ").trim();
 }
 
-export function computeHash(input: {
+export async function computeHash(input: {
   title: string;
   description: string;
   startDate: string;
-}): string {
+}): Promise<string> {
   const payload = `${input.title}::${input.startDate}::${input.description}`;
   const buffer = new TextEncoder().encode(payload);
-  return crypto.subtle.digest("SHA-256", buffer).then((digest) => {
-    const bytes = new Uint8Array(digest);
-    let hex = "";
-    for (const byte of bytes) {
-      hex += byte.toString(16).padStart(2, "0");
-    }
-    return hex;
-  });
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  const bytes = new Uint8Array(digest);
+  let hex = "";
+  for (const byte of bytes) {
+    hex += byte.toString(16).padStart(2, "0");
+  }
+  return hex;
 }
 
 export async function isDuplicate(
