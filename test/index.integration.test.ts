@@ -90,7 +90,7 @@ describe('Worker Integration Tests', () => {
       const response = await worker.fetch(request, mockEnv);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await response.json() as { ok: boolean; stats: { processed: number; created: number } };
       expect(data.ok).toBe(true);
       expect(data.stats).toEqual({ processed: 0, created: 0 });
     });
@@ -103,7 +103,7 @@ describe('Worker Integration Tests', () => {
       const response = await worker.fetch(request, mockEnv);
 
       expect(response.status).toBe(500);
-      const data = await response.json();
+      const data = await response.json() as { ok: boolean; error: string };
       expect(data.ok).toBe(false);
       expect(data.error).toContain('Network error');
     });
@@ -163,7 +163,7 @@ describe('Worker Integration Tests', () => {
       const response = await worker.fetch(request, mockEnv);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await response.json() as { ok: boolean; stats: { processed: number; created: number } };
       expect(data.ok).toBe(true);
       expect(data.stats).toEqual({ processed: 1, created: 1 });
 
@@ -207,7 +207,7 @@ describe('Worker Integration Tests', () => {
       const response = await worker.fetch(request, mockEnv);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await response.json() as { ok: boolean; stats: { processed: number; created: number } };
       expect(data.ok).toBe(true);
       expect(data.stats).toEqual({ processed: 1, created: 0 });
 
@@ -249,7 +249,7 @@ describe('Worker Integration Tests', () => {
       const response = await worker.fetch(request, mockEnv);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await response.json() as { ok: boolean; stats: { processed: number; created: number } };
       expect(data.ok).toBe(true);
       expect(data.stats).toEqual({ processed: 1, created: 0 });
 
@@ -286,7 +286,7 @@ describe('Worker Integration Tests', () => {
       const response = await worker.fetch(request, mockEnv);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await response.json() as { ok: boolean; stats: { processed: number; created: number } };
       expect(data.ok).toBe(true);
       expect(data.stats).toEqual({ processed: 0, created: 0 }); // Error prevents processing
 
