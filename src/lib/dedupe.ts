@@ -33,21 +33,103 @@ function normalizeText(text: string | undefined): string {
   return (text ?? "").replace(/\s+/g, " ").trim();
 }
 
-export function computeHash(input: {
+/**
+ * Parse ISO 8601 datetime string to Date object
+ * Handles format: YYYY-MM-DDTHH:MM:SS+09:00 or similar
+ */
+export function parseDateTime(isoString: string): Date {
+  try {
+    const date = new Date(isoString);
+    // Check if the date is valid
+    if (Number.isNaN(date.getTime())) {
+      throw new Error(`Invalid datetime: ${isoString}`);
+    }
+    return date;
+  } catch (error) {
+    throw new Error(`Failed to parse datetime: ${isoString}`);
+  }
+}
+
+/**
+ * Extract time range from Google Calendar event
+ * Returns {start, end} in Date objects, or null if all-day event
+ */
+export function getEventTimeRange(
+  event: GoogleCalendarEvent,
+): { start: Date; end: Date } | null {
+  // All-day event: has date property
+  if (event.start?.date) {
+    return null;
+  }
+
+  // Timed event: has dateTime property
+  if (!event.start?.dateTime || !event.end?.dateTime) {
+    return null;
+  }
+
+  try {
+    return {
+      start: parseDateTime(event.start.dateTime),
+      end: parseDateTime(event.end.dateTime),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract time range from candidate event input
+ * Returns {start, end} in Date objects, or null if all-day event
+ */
+export function getInputTimeRange(
+  input: CalendarEventInput,
+  day: string,
+): { start: Date; end: Date } | null {
+  // All-day event: no startTime/endTime
+  if (!input.startTime) {
+    return null;
+  }
+
+  try {
+    // Assume KST timezone
+    const startStr = `${day}T${input.startTime}:00+09:00`;
+    const endDate = input.endDate ?? day;
+    const endStr = `${endDate}T${input.endTime ?? "23:59"}:00+09:00`;
+
+    return {
+      start: parseDateTime(startStr),
+      end: parseDateTime(endStr),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if two time ranges overlap
+ * Two ranges overlap if: range1.start < range2.end AND range2.start < range1.end
+ */
+export function timeRangesOverlap(
+  range1: { start: Date; end: Date },
+  range2: { start: Date; end: Date },
+): boolean {
+  return range1.start < range2.end && range2.start < range1.end;
+}
+
+export async function computeHash(input: {
   title: string;
   description: string;
   startDate: string;
-}): string {
+}): Promise<string> {
   const payload = `${input.title}::${input.startDate}::${input.description}`;
   const buffer = new TextEncoder().encode(payload);
-  return crypto.subtle.digest("SHA-256", buffer).then((digest) => {
-    const bytes = new Uint8Array(digest);
-    let hex = "";
-    for (const byte of bytes) {
-      hex += byte.toString(16).padStart(2, "0");
-    }
-    return hex;
-  });
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  const bytes = new Uint8Array(digest);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
 }
 
 export async function isDuplicate(
@@ -58,12 +140,35 @@ export async function isDuplicate(
   const normalizedTitle = normalizeText(candidate.title);
   const normalizedDescription = normalizeText(candidate.description);
   const day = candidate.startDate;
+  const inputTimeRange = getInputTimeRange(candidate, day);
+
   for (const event of existing) {
+    // 1. Check nttNo exact match (highest priority)
     if (options.meta?.nttNo && event.extendedProperties?.private?.nttNo === options.meta.nttNo) {
       return true;
     }
+
+    // 2. Filter by date
     const eventDate = event.start?.date ?? event.start?.dateTime?.slice(0, 10);
     if (eventDate !== day) continue;
+
+    // 3. Check time range overlap (if both are timed events)
+    const eventTimeRange = getEventTimeRange(event);
+
+    if (eventTimeRange && inputTimeRange) {
+      // Both are timed events: must have time overlap to be considered duplicate
+      if (!timeRangesOverlap(eventTimeRange, inputTimeRange)) {
+        continue; // No time overlap, not a duplicate
+      }
+    } else if (!eventTimeRange && !inputTimeRange) {
+      // Both are all-day events on same date
+      // Fall through to Levenshtein comparison
+    } else {
+      // One is timed, one is all-day: different types, continue to next event
+      continue;
+    }
+
+    // 4. Compare title and description similarity
     const titleScore = normalizedLevenshtein(
       normalizedTitle,
       normalizeText(event.summary ?? ""),

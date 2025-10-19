@@ -1,5 +1,26 @@
 import type { PreviewContent, RssItem } from "../types";
 
+export type FileType = "image" | "pdf" | "hwp" | "doc" | "other";
+
+export function getFileType(filename: string | undefined): FileType {
+  if (!filename) return "other";
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+
+  if (["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext)) {
+    return "image";
+  }
+  if (ext === "pdf") {
+    return "pdf";
+  }
+  if (["hwp", "hwpx"].includes(ext)) {
+    return "hwp";
+  }
+  if (["doc", "docx"].includes(ext)) {
+    return "doc";
+  }
+  return "other";
+}
+
 export function extractPreviewId(previewUrl: string | undefined): string | null {
   if (!previewUrl) return null;
   try {
@@ -21,8 +42,15 @@ export async function fetchPreviewContent(
   if (!id) {
     return { sourceType: "none" };
   }
-  const endpoint = `${env.PREVIEW_PARSER_BASE.replace(/\/?$/, "/")}${id}`;
-  const response = await fetcher(endpoint);
+  const base = env.PREVIEW_PARSER_BASE.endsWith("/")
+    ? env.PREVIEW_PARSER_BASE
+    : env.PREVIEW_PARSER_BASE + "/";
+  const endpoint = `${base}${id}`;
+  const response = await fetcher(endpoint, {
+    headers: {
+      Authorization: `Bearer ${env.BEARER_TOKEN}`,
+    },
+  });
   if (!response.ok) {
     console.error(`Failed to fetch preview ${id}`, response.status, response.statusText);
     return { sourceType: "none" };
@@ -60,6 +88,7 @@ export async function fetchPreviewContent(
 
 export type EnvBindings = {
   PREVIEW_PARSER_BASE: string;
+  BEARER_TOKEN: string;
 };
 
 export function resolveAttachmentText(item: RssItem): string {

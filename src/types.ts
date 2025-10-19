@@ -27,11 +27,22 @@ export interface AiSummary {
   extractedText?: string;
 }
 
+export interface AiEvent {
+  title?: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  startTime?: string;
+  endTime?: string;
+}
+
 export interface CalendarEventInput {
-  title: string;
-  description: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
+title: string;
+description: string;
+startDate: string; // YYYY-MM-DD
+endDate: string; // YYYY-MM-DD
+  startTime?: string; // HH:MM (optional, if not provided, allday)
+  endTime?: string; // HH:MM (optional)
 }
 
 export interface ProcessedRecord {

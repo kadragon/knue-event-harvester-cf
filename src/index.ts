@@ -1,4 +1,8 @@
-import { generateSummary, extractTextFromImage, type AiEnv } from "./lib/ai";
+import { generateEventInfos, generateSummary, type AiEnv } from "./lib/ai";
+import type {
+  ScheduledController,
+  ExecutionContext,
+} from "@cloudflare/workers-types";
 import {
   obtainAccessToken,
   listEvents,
@@ -7,16 +11,27 @@ import {
   type GoogleCalendarEvent,
 } from "./lib/calendar";
 import { isDuplicate, computeHash } from "./lib/dedupe";
-import { htmlToText } from "./lib/html";
-import { fetchPreviewContent, resolveAttachmentText, type EnvBindings } from "./lib/preview";
-import { parseRss } from "./lib/rss";
-import { getProcessedRecord, putProcessedRecord, type StateEnv } from "./lib/state";
-import type { AiSummary, CalendarEventInput, ProcessedRecord, RssItem } from "./types";
 
-interface Env extends StateEnv, CalendarEnv, EnvBindings, AiEnv {
+import { parseRss } from "./lib/rss";
+import {
+  getProcessedRecord,
+  putProcessedRecord,
+  type StateEnv,
+} from "./lib/state";
+import type {
+  CalendarEventInput,
+  ProcessedRecord,
+  RssItem,
+  AiSummary,
+} from "./types";
+
+interface Env extends StateEnv, CalendarEnv, AiEnv {
   OPENAI_API_KEY: string;
   OPENAI_CONTENT_MODEL: string;
   OPENAI_VISION_MODEL?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_AI_GATEWAY_NAME?: string;
+  CLOUDFLARE_AI_GATEWAY_AUTH?: string;
   SIMILARITY_THRESHOLD?: string;
   LOOKBACK_DAYS?: string;
   GOOGLE_CALENDAR_ID: string;
@@ -51,30 +66,62 @@ function normalizeDate(pubDate: string): string {
   return parsed.toISOString().slice(0, 10);
 }
 
+/**
+ * Check if pubDate is within the last 7 days from today
+ * Returns true if the item should be processed, false if it's too old
+ */
+function isWithinLastWeek(pubDate: string): boolean {
+  if (!pubDate) return true; // Process if no pubDate available
+
+  try {
+    const normalizedDate = normalizeDate(pubDate);
+    const itemDate = new Date(normalizedDate);
+    const today = new Date();
+
+    // Set time to midnight for accurate day comparison
+    itemDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+
+    // Calculate days difference
+    const diffTime = today.getTime() - itemDate.getTime();
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+    // Include items from last 7 days and future items
+    return diffDays <= 7 && diffDays >= -30; // Allow up to 30 days in future for upcoming events
+  } catch (error) {
+    console.warn("Failed to parse pubDate for filtering:", pubDate, error);
+    return true; // Process if parsing fails (fail-open)
+  }
+}
+
 function buildDescription(
   item: RssItem,
   summary: AiSummary,
   htmlDescription: string,
-  attachmentText: string,
-  previewText?: string,
-  imageText?: string,
+  attachmentText: string
 ): string {
   const parts: string[] = [];
   parts.push(summary.summary);
   if (summary.highlights.length > 0) {
-    parts.push("주요 포인트:\n" + summary.highlights.map((line) => `- ${line}`).join("\n"));
+    parts.push(
+      "주요 포인트:\n" +
+        summary.highlights.map((line) => `- ${line}`).join("\n")
+    );
   }
   if (summary.actionItems.length > 0) {
-    parts.push("확인/신청 사항:\n" + summary.actionItems.map((line) => `- ${line}`).join("\n"));
+    parts.push(
+      "확인/신청 사항:\n" +
+        summary.actionItems.map((line) => `- ${line}`).join("\n")
+    );
   }
   if (summary.links.length > 0 || item.link) {
     const linkLines = [...summary.links];
     if (item.link) linkLines.unshift(item.link);
-    parts.push("관련 링크:\n" + linkLines.map((link) => `- ${link}`).join("\n"));
+    parts.push(
+      "관련 링크:\n" + linkLines.map((link) => `- ${link}`).join("\n")
+    );
   }
   if (attachmentText) parts.push(attachmentText);
-  if (previewText) parts.push(`미리보기 요약:\n${previewText}`);
-  if (imageText) parts.push(`OCR 추출 텍스트:\n${imageText}`);
   if (htmlDescription) {
     parts.push("원문 본문:\n" + htmlDescription);
   }
@@ -86,80 +133,95 @@ async function processNewItem(
   item: RssItem,
   accessToken: string,
   existingEvents: GoogleCalendarEvent[],
-  similarityThreshold: number,
-): Promise<GoogleCalendarEvent | null> {
-  const normalizedDate = normalizeDate(item.pubDate);
-  const plainText = htmlToText(item.descriptionHtml);
-  const attachmentText = resolveAttachmentText(item);
-
-  const preview = await fetchPreviewContent(item.attachment?.preview, env);
-  let previewText: string | undefined;
-  if (preview.sourceType === "text") {
-    previewText = htmlToText(preview.text ?? "");
-  }
-  let imageText: string | undefined;
-  if (preview.sourceType === "image") {
-    imageText = await extractTextFromImage(env, preview);
-  }
-  const extraText = previewText ?? imageText ?? "";
-  const aiSummary = await generateSummary(env, {
+  similarityThreshold: number
+): Promise<GoogleCalendarEvent[]> {
+  const summary = await generateSummary(env, {
     title: item.title,
-    description: plainText,
-    previewText: extraText,
-    attachmentText,
+    description: item.descriptionHtml,
+    previewText: undefined,
+    attachmentText: item.attachment
+      ? item.attachment.filename
+        ? `첨부파일: ${item.attachment.filename}`
+        : undefined
+      : undefined,
     link: item.link,
-    pubDate: normalizedDate,
+    pubDate: item.pubDate,
   });
+  const eventInputs = await generateEventInfos(env, item);
+  const createdEvents: GoogleCalendarEvent[] = [];
 
-  const description = buildDescription(
-    item,
-    aiSummary,
-    plainText,
-    attachmentText,
-    previewText,
-    imageText,
-  );
+  for (let eventInput of eventInputs) {
+    // Default endTime to startTime to ensure timed events are consistently deduplicated
+    if (eventInput.startTime && !eventInput.endTime) {
+      eventInput = {
+        ...eventInput,
+        endTime: eventInput.startTime,
+      };
+    }
+    const description = buildDescription(
+      item,
+      summary,
+      item.descriptionHtml,
+      item.attachment
+        ? item.attachment.filename
+          ? `첨부파일: ${item.attachment.filename}`
+          : ""
+        : ""
+    );
+    eventInput.description = description;
 
-  const eventInput: CalendarEventInput = {
-    title: item.title.trim() || "제목 없음",
-    description,
-    startDate: normalizedDate,
-    endDate: normalizedDate,
-  };
+    const hash = await computeHash(eventInput);
+    const meta: ProcessedRecord = {
+      eventId: "",
+      nttNo: item.id,
+      processedAt: new Date().toISOString(),
+      hash,
+    };
 
-  const hash = await computeHash(eventInput);
-  const meta: ProcessedRecord = {
-    eventId: "",
-    nttNo: item.id,
-    processedAt: new Date().toISOString(),
-    hash,
-  };
+    const duplicate = await isDuplicate(existingEvents, eventInput, {
+      threshold: similarityThreshold,
+      meta,
+    });
+    if (duplicate) {
+      console.log(
+        `Duplicate detected for ${item.id} event: ${eventInput.title}`
+      );
+      // 중복 감지 시에도 상태 저장 (다시 처리하지 않도록)
+      await putProcessedRecord(env, item.id, {
+        eventId: "duplicate-skip",
+        nttNo: item.id,
+        processedAt: new Date().toISOString(),
+        hash,
+      });
+      continue;
+    }
 
-  const duplicate = await isDuplicate(existingEvents, eventInput, {
-    threshold: similarityThreshold,
-    meta,
-  });
-  if (duplicate) {
-    console.log(`Duplicate detected for ${item.id}`);
+    const created = await createEvent(env, accessToken, eventInput, meta, {
+      summaryHash: hash,
+    });
     await putProcessedRecord(env, item.id, {
       ...meta,
-      eventId: "duplicate-skip",
+      eventId: created.id,
     });
-    return null;
+    existingEvents.push(created);
+    createdEvents.push(created);
   }
 
-  const created = await createEvent(env, accessToken, eventInput, meta, {
-    summaryHash: hash,
-  });
-  await putProcessedRecord(env, item.id, {
-    ...meta,
-    eventId: created.id,
-  });
-  existingEvents.push(created);
-  return created;
-}
+  // 의미있는 일정이 없었을 때 상태 저장 (한 번 시도 후 더 이상 재시도하지 않음)
+  if (eventInputs.length === 0) {
+    console.log(
+      `No meaningful events extracted for item ${item.id}, marking as processed`
+    );
+    await putProcessedRecord(env, item.id, {
+      eventId: "",
+      nttNo: item.id,
+      processedAt: new Date().toISOString(),
+      hash: "",
+    });
+  }
 
-type GoogleCalendarEvent = Awaited<ReturnType<typeof createEvent>>;
+  return createdEvents;
+}
 
 async function run(env: Env): Promise<{ processed: number; created: number }> {
   const rssXml = await fetchRssFeed();
@@ -181,21 +243,63 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
   let created = 0;
 
   for (const item of items) {
+    // Filter: Only process items with pubDate within last 7 days
+    if (!isWithinLastWeek(item.pubDate)) {
+      console.log(
+        `Skipping item ${item.id} - pubDate ${item.pubDate} is older than 1 week`
+      );
+      continue;
+    }
+
     const already = await getProcessedRecord(env, item.id);
     if (already) {
       processed += 1;
       continue;
     }
     try {
-      const result = await processNewItem(env, item, accessToken, existing, similarityThreshold);
+      const results = await processNewItem(
+        env,
+        item,
+        accessToken,
+        existing,
+        similarityThreshold
+      );
       processed += 1;
-      if (result) created += 1;
+      created += results.length;
     } catch (error) {
       console.error("Failed to process item", item.id, error);
     }
   }
 
   return { processed, created };
+}
+
+async function testFirstItem(env: Env): Promise<any> {
+  try {
+    const rssXml = await fetchRssFeed();
+    const items = parseRss(rssXml);
+    if (items.length === 0) {
+      return { error: "No RSS items found" };
+    }
+    const firstItem = items[0];
+    console.log("Testing first RSS item:", firstItem.title, firstItem.id);
+
+    const eventInputs = await generateEventInfos(env, firstItem);
+    console.log("Extracted events:", eventInputs);
+
+    return {
+      item: {
+        id: firstItem.id,
+        title: firstItem.title,
+        pubDate: firstItem.pubDate,
+        descriptionLength: firstItem.descriptionHtml.length,
+      },
+      events: eventInputs,
+    };
+  } catch (error) {
+    console.error("Test failed", error);
+    return { error: String(error) };
+  }
 }
 
 export default {
@@ -207,7 +311,7 @@ export default {
         })
         .catch((error) => {
           console.error("Scheduled run failed", error);
-        }),
+        })
     );
   },
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -219,10 +323,29 @@ export default {
           headers: { "Content-Type": "application/json" },
         });
       } catch (error) {
-        return new Response(JSON.stringify({ ok: false, error: String(error) }), {
-          status: 500,
+        return new Response(
+          JSON.stringify({ ok: false, error: String(error) }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+    }
+    if (url.pathname === "/test") {
+      try {
+        const result = await testFirstItem(env);
+        return new Response(JSON.stringify(result, null, 2), {
           headers: { "Content-Type": "application/json" },
         });
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ ok: false, error: String(error) }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
     }
     return new Response("knue-event-harvester");

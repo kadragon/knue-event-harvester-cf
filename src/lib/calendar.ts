@@ -36,8 +36,8 @@ type JwtPayload = Record<string, unknown>;
 function base64UrlEncode(buffer: ArrayBuffer | Uint8Array): string {
   const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
   const base64 = btoa(binary);
   return base64.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
@@ -141,28 +141,45 @@ export async function listEvents(
   token: string,
   params: { timeMin: string; timeMax: string },
 ): Promise<GoogleCalendarEvent[]> {
-  const url = new URL(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(env.GOOGLE_CALENDAR_ID)}/events`,
-  );
-  url.searchParams.set("singleEvents", "true");
-  url.searchParams.set("orderBy", "startTime");
-  url.searchParams.set("maxResults", "50");
-  url.searchParams.set("timeMin", params.timeMin);
-  url.searchParams.set("timeMax", params.timeMax);
+  const allEvents: GoogleCalendarEvent[] = [];
+  let nextPageToken: string | undefined;
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Failed to list events", response.status, errorText);
-    throw new Error(`Google Calendar list error ${response.status}`);
-  }
+  do {
+    const url = new URL(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(env.GOOGLE_CALENDAR_ID)}/events`,
+    );
+    url.searchParams.set("singleEvents", "true");
+    url.searchParams.set("orderBy", "startTime");
+    url.searchParams.set("maxResults", "50");
+    url.searchParams.set("timeMin", params.timeMin);
+    url.searchParams.set("timeMax", params.timeMax);
 
-  const data = (await response.json()) as { items?: GoogleCalendarEvent[] };
-  return data.items ?? [];
+    if (nextPageToken) {
+      url.searchParams.set("pageToken", nextPageToken);
+    }
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Failed to list events", response.status, errorText);
+      throw new Error(`Google Calendar list error ${response.status}`);
+    }
+
+    const data = (await response.json()) as {
+      items?: GoogleCalendarEvent[];
+      nextPageToken?: string;
+    };
+    if (data.items) {
+      allEvents.push(...data.items);
+    }
+    nextPageToken = data.nextPageToken;
+  } while (nextPageToken);
+
+  return allEvents;
 }
 
 export async function createEvent(
@@ -173,13 +190,29 @@ export async function createEvent(
   descriptionExtras?: Record<string, unknown>,
 ): Promise<GoogleCalendarEvent> {
   const startDate = input.startDate;
-  const endDateExclusive = addDays(input.endDate, 1);
+  const endDate = input.endDate;
+
+  let start: { date?: string; dateTime?: string };
+  let end: { date?: string; dateTime?: string };
+
+  if (input.startTime && input.endTime) {
+    // Timed event
+    const startDateTime = `${startDate}T${input.startTime}:00+09:00`; // Assume KST
+    const endDateTime = `${endDate}T${input.endTime}:00+09:00`;
+    start = { dateTime: startDateTime };
+    end = { dateTime: endDateTime };
+  } else {
+    // All-day event
+    const endDateExclusive = addDays(endDate, 1);
+    start = { date: startDate };
+    end = { date: endDateExclusive };
+  }
 
   const body = {
     summary: input.title,
     description: input.description,
-    start: { date: startDate },
-    end: { date: endDateExclusive },
+    start,
+    end,
     extendedProperties: {
       private: {
         nttNo: meta.nttNo,

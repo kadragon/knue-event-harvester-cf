@@ -1,4 +1,5 @@
 import type { ProcessedRecord } from "../types";
+import type { KVNamespace } from "@cloudflare/workers-types";
 
 export interface StateEnv {
   PROCESSED_STORE: KVNamespace;

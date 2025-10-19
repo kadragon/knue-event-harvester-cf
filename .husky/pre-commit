@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+
+# Lint staged files
+echo "📝 Linting staged files..."
+npx lint-staged
