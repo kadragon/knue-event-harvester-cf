@@ -1,0 +1,21 @@
+# Node dependencies
+node_modules/
+
+# Build artifacts
+dist/
+.wrangler/
+
+# Logs and temp
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+.DS_Store
+.dev.vars
+
+# Credentials / local env
+.env
+.env.*
+
+# Test output
+coverage/
+.vitest/

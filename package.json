@@ -1,0 +1,22 @@
+{
+  "name": "knue-event-harvester-cf",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "test": "vitest --run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.8.10"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240903.0",
+    "@types/node": "^20.16.5",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.3",
+    "wrangler": "^3.76.0"
+  }
+}

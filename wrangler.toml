@@ -1,0 +1,29 @@
+name = "knue-event-harvester"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["0 */4 * * *"]
+
+[[kv_namespaces]]
+binding = "PROCESSED_STORE"
+id = "<production-kv-id>"
+preview_id = "<preview-kv-id>"
+
+[vars]
+PREVIEW_PARSER_BASE = "https://knue-www-preview-parser-cf.kangdongouk.workers.dev/"
+OPENAI_CONTENT_MODEL = "gpt-4o-mini"
+OPENAI_VISION_MODEL = "gpt-4o-mini"
+SIMILARITY_THRESHOLD = "0.85"
+LOOKBACK_DAYS = "60"
+
+[env.preview.vars]
+SIMILARITY_THRESHOLD = "0.8"
+
+[placement]
+mode = "smart"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
