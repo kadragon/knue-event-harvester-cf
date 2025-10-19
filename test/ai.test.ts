@@ -71,6 +71,7 @@ describe('AI Module', () => {
         ...mockEnv,
         CLOUDFLARE_ACCOUNT_ID: 'test-account',
         CLOUDFLARE_AI_GATEWAY_NAME: 'test-gateway',
+        CLOUDFLARE_AI_GATEWAY_AUTH: 'gateway-token',
       };
 
       fetchMock.mockResolvedValueOnce({
@@ -98,6 +99,7 @@ describe('AI Module', () => {
 
       const callArgs = fetchMock.mock.calls[0];
       expect(callArgs[0]).toBe('https://gateway.ai.cloudflare.com/v1/account/test-account/ai-gateway/test-gateway/openai/chat/completions');
+      expect(callArgs[1].headers['cf-aig-authorization']).toBe('Bearer gateway-token');
     });
 
     it('should return fallback on API error', async () => {
