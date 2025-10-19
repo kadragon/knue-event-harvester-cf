@@ -17,7 +17,7 @@
   },
   "lint-staged": {
     "*.{ts,tsx}": [
-      "tsc --noEmit --skipLibCheck"
+      "tsc --noEmit"
     ]
   },
   "devDependencies": {
@@ -27,6 +27,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.2.4",
     "typescript": "^5.4.5",
+    "vite": "^7.1.10",
     "vitest": "^1.5.3",
     "wrangler": "^3.76.0"
   }
