@@ -66,6 +66,34 @@ function normalizeDate(pubDate: string): string {
   return parsed.toISOString().slice(0, 10);
 }
 
+/**
+ * Check if pubDate is within the last 7 days from today
+ * Returns true if the item should be processed, false if it's too old
+ */
+function isWithinLastWeek(pubDate: string): boolean {
+  if (!pubDate) return true; // Process if no pubDate available
+
+  try {
+    const normalizedDate = normalizeDate(pubDate);
+    const itemDate = new Date(normalizedDate);
+    const today = new Date();
+
+    // Set time to midnight for accurate day comparison
+    itemDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+
+    // Calculate days difference
+    const diffTime = today.getTime() - itemDate.getTime();
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+    // Include items from last 7 days and future items
+    return diffDays <= 7 && diffDays >= -30; // Allow up to 30 days in future for upcoming events
+  } catch (error) {
+    console.warn("Failed to parse pubDate for filtering:", pubDate, error);
+    return true; // Process if parsing fails (fail-open)
+  }
+}
+
 function buildDescription(
   item: RssItem,
   summary: AiSummary,
@@ -214,6 +242,14 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
   let created = 0;
 
   for (const item of items) {
+    // Filter: Only process items with pubDate within last 7 days
+    if (!isWithinLastWeek(item.pubDate)) {
+      console.log(
+        `Skipping item ${item.id} - pubDate ${item.pubDate} is older than 1 week`
+      );
+      continue;
+    }
+
     const already = await getProcessedRecord(env, item.id);
     if (already) {
       processed += 1;

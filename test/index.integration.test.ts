@@ -125,7 +125,7 @@ describe('Worker Integration Tests', () => {
         id: '123',
         title: 'Test Event',
         link: 'http://example.com/123',
-        pubDate: '2023-01-01',
+        pubDate: '2025-10-15',
         descriptionHtml: '<p>Test description</p>',
         attachment: {
           filename: 'document.pdf',
@@ -191,7 +191,7 @@ describe('Worker Integration Tests', () => {
         id: '123',
         title: 'Test Event',
         link: 'http://example.com/123',
-        pubDate: '2023-01-01',
+        pubDate: '2025-10-15',
         descriptionHtml: '<p>Test description</p>',
       };
 
@@ -229,7 +229,7 @@ describe('Worker Integration Tests', () => {
         id: '123',
         title: 'Test Event',
         link: 'http://example.com/123',
-        pubDate: '2023-01-01',
+        pubDate: '2025-10-15',
         descriptionHtml: '<p>Test description</p>',
       };
 
@@ -282,7 +282,7 @@ describe('Worker Integration Tests', () => {
         id: '123',
         title: 'Test Event',
         link: 'http://example.com/123',
-        pubDate: '2023-01-01',
+        pubDate: '2025-10-15',
         descriptionHtml: '<p>Test description</p>',
       };
 
@@ -345,7 +345,7 @@ describe('Worker Integration Tests', () => {
         id: '123',
         title: 'School Opening Day',
         link: 'http://example.com/123',
-        pubDate: '2025-10-01',
+        pubDate: '2025-10-15',
         descriptionHtml: '<p>Two events: morning academic session and afternoon gala</p>',
       };
 
@@ -422,7 +422,7 @@ describe('Worker Integration Tests', () => {
         id: '123',
         title: 'Test Event',
         link: 'http://example.com/123',
-        pubDate: '2025-10-01',
+        pubDate: '2025-10-15',
         descriptionHtml: '<p>Test</p>',
       };
 
@@ -484,7 +484,7 @@ describe('Worker Integration Tests', () => {
         id: '456',
         title: 'Multi-Event Day',
         link: 'http://example.com/456',
-        pubDate: '2025-10-01',
+        pubDate: '2025-10-15',
         descriptionHtml: '<p>Three simultaneous events planned for opening day</p>',
       };
 
