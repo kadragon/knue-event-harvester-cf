@@ -9,7 +9,6 @@ crons = ["5 0-10 * * 1-5"]
 [[kv_namespaces]]
 binding = "PROCESSED_STORE"
 id = "68a5f081c9544cbe975b7de5f29118b1"
-preview_id = "f2c768d9033e4a848a5b0607739a6912"
 
 [vars]
 PREVIEW_PARSER_BASE = "https://knue-www-preview-parser-cf.kangdongouk.workers.dev"
@@ -18,9 +17,6 @@ OPENAI_VISION_MODEL = "gpt-4o-mini"
 SIMILARITY_THRESHOLD = "0.85"
 LOOKBACK_DAYS = "30"
 GOOGLE_CALENDAR_ID = "b71b5c37386baf51a196b6a1de3013726b55f51aa571d583f477cdacaf12bd5d@group.calendar.google.com"
-
-[env.preview.vars]
-SIMILARITY_THRESHOLD = "0.8"
 
 [placement]
 mode = "smart"
