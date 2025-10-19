@@ -173,13 +173,29 @@ export async function createEvent(
   descriptionExtras?: Record<string, unknown>,
 ): Promise<GoogleCalendarEvent> {
   const startDate = input.startDate;
-  const endDateExclusive = addDays(input.endDate, 1);
+  const endDate = input.endDate;
+
+  let start: { date?: string; dateTime?: string };
+  let end: { date?: string; dateTime?: string };
+
+  if (input.startTime && input.endTime) {
+    // Timed event
+    const startDateTime = `${startDate}T${input.startTime}:00+09:00`; // Assume KST
+    const endDateTime = startDate === endDate ? `${endDate}T${input.endTime}:00+09:00` : `${endDate}T${input.endTime}:00+09:00`;
+    start = { dateTime: startDateTime };
+    end = { dateTime: endDateTime };
+  } else {
+    // All-day event
+    const endDateExclusive = addDays(endDate, 1);
+    start = { date: startDate };
+    end = { date: endDateExclusive };
+  }
 
   const body = {
     summary: input.title,
     description: input.description,
-    start: { date: startDate },
-    end: { date: endDateExclusive },
+    start,
+    end,
     extendedProperties: {
       private: {
         nttNo: meta.nttNo,

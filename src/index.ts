@@ -1,4 +1,4 @@
-import { generateSummary, extractTextFromImage, type AiEnv } from "./lib/ai";
+import { generateEventInfos, type AiEnv } from "./lib/ai";
 import {
   obtainAccessToken,
   listEvents,
@@ -7,18 +7,18 @@ import {
   type GoogleCalendarEvent,
 } from "./lib/calendar";
 import { isDuplicate, computeHash } from "./lib/dedupe";
-import { htmlToText } from "./lib/html";
-import { fetchPreviewContent, resolveAttachmentText, getFileType, type EnvBindings } from "./lib/preview";
+
 import { parseRss } from "./lib/rss";
 import { getProcessedRecord, putProcessedRecord, type StateEnv } from "./lib/state";
-import type { AiSummary, CalendarEventInput, ProcessedRecord, RssItem } from "./types";
+import type { CalendarEventInput, ProcessedRecord, RssItem } from "./types";
 
-interface Env extends StateEnv, CalendarEnv, EnvBindings, AiEnv {
+interface Env extends StateEnv, CalendarEnv, AiEnv {
   OPENAI_API_KEY: string;
   OPENAI_CONTENT_MODEL: string;
   OPENAI_VISION_MODEL?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_AI_GATEWAY_NAME?: string;
+  CLOUDFLARE_AI_GATEWAY_AUTH?: string;
   SIMILARITY_THRESHOLD?: string;
   LOOKBACK_DAYS?: string;
   GOOGLE_CALENDAR_ID: string;
@@ -89,98 +89,43 @@ async function processNewItem(
   accessToken: string,
   existingEvents: GoogleCalendarEvent[],
   similarityThreshold: number,
-): Promise<GoogleCalendarEvent | null> {
-  const normalizedDate = normalizeDate(item.pubDate);
-  const plainText = htmlToText(item.descriptionHtml);
-  const attachmentText = resolveAttachmentText(item);
+): Promise<GoogleCalendarEvent[]> {
+  const eventInputs = await generateEventInfos(env, item);
+  const createdEvents: GoogleCalendarEvent[] = [];
 
-  let previewText: string | undefined;
-  let imageText: string | undefined;
+  for (const eventInput of eventInputs) {
+    const description = buildDescription(item, eventInput.description);
+    eventInput.description = description;
 
-  // 첨부파일 타입에 따라 다르게 처리
-  const fileType = getFileType(item.attachment?.filename);
+    const hash = await computeHash(eventInput);
+    const meta: ProcessedRecord = {
+      eventId: "",
+      nttNo: item.id,
+      processedAt: new Date().toISOString(),
+      hash,
+    };
 
-  if (fileType === "image") {
-    // 이미지: OCR 처리
-    const preview = await fetchPreviewContent(item.attachment?.preview, env);
-    if (preview.sourceType === "image") {
-      imageText = await extractTextFromImage(env, preview);
+    const duplicate = await isDuplicate(existingEvents, eventInput, {
+      threshold: similarityThreshold,
+      meta,
+    });
+    if (duplicate) {
+      console.log(`Duplicate detected for ${item.id} event: ${eventInput.title}`);
+      continue;
     }
-  } else if (fileType === "pdf" || fileType === "hwp" || fileType === "doc") {
-    // PDF/HWP/DOC: preview parser로 텍스트 추출
-    const preview = await fetchPreviewContent(item.attachment?.preview, env);
-    if (preview.sourceType === "text") {
-      previewText = htmlToText(preview.text ?? "");
-    } else if (preview.sourceType === "binary") {
-      // binary는 파일 형식이지만 텍스트로 처리 시도
-      console.log(`Document file (${fileType}) returned as binary for ${item.id}`);
-    }
-  } else if (item.attachment?.preview) {
-    // 기타 파일 타입: 기존 로직대로 처리
-    const preview = await fetchPreviewContent(item.attachment.preview, env);
-    if (preview.sourceType === "text") {
-      previewText = htmlToText(preview.text ?? "");
-    } else if (preview.sourceType === "image") {
-      imageText = await extractTextFromImage(env, preview);
-    }
-  }
 
-  const extraText = previewText ?? imageText ?? "";
-  const aiSummary = await generateSummary(env, {
-    title: item.title,
-    description: plainText,
-    previewText: extraText,
-    attachmentText,
-    link: item.link,
-    pubDate: normalizedDate,
-  });
-
-  const description = buildDescription(
-    item,
-    aiSummary,
-    plainText,
-    attachmentText,
-    previewText,
-    imageText,
-  );
-
-  const eventInput: CalendarEventInput = {
-    title: item.title.trim() || "제목 없음",
-    description,
-    startDate: normalizedDate,
-    endDate: normalizedDate,
-  };
-
-  const hash = await computeHash(eventInput);
-  const meta: ProcessedRecord = {
-    eventId: "",
-    nttNo: item.id,
-    processedAt: new Date().toISOString(),
-    hash,
-  };
-
-  const duplicate = await isDuplicate(existingEvents, eventInput, {
-    threshold: similarityThreshold,
-    meta,
-  });
-  if (duplicate) {
-    console.log(`Duplicate detected for ${item.id}`);
+    const created = await createEvent(env, accessToken, eventInput, meta, {
+      summaryHash: hash,
+    });
     await putProcessedRecord(env, item.id, {
       ...meta,
-      eventId: "duplicate-skip",
+      eventId: created.id,
     });
-    return null;
+    existingEvents.push(created);
+    createdEvents.push(created);
   }
 
-  const created = await createEvent(env, accessToken, eventInput, meta, {
-    summaryHash: hash,
-  });
-  await putProcessedRecord(env, item.id, {
-    ...meta,
-    eventId: created.id,
-  });
-  existingEvents.push(created);
-  return created;
+  return createdEvents;
 }
 
 
@@ -211,15 +156,43 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
       continue;
     }
     try {
-      const result = await processNewItem(env, item, accessToken, existing, similarityThreshold);
+      const results = await processNewItem(env, item, accessToken, existing, similarityThreshold);
       processed += 1;
-      if (result) created += 1;
+      created += results.length;
     } catch (error) {
       console.error("Failed to process item", item.id, error);
     }
   }
 
   return { processed, created };
+}
+
+async function testFirstItem(env: Env): Promise<any> {
+  try {
+    const rssXml = await fetchRssFeed();
+    const items = parseRss(rssXml);
+    if (items.length === 0) {
+      return { error: "No RSS items found" };
+    }
+    const firstItem = items[0];
+    console.log("Testing first RSS item:", firstItem.title, firstItem.id);
+
+    const eventInputs = await generateEventInfos(env, firstItem);
+    console.log("Extracted events:", eventInputs);
+
+    return {
+      item: {
+        id: firstItem.id,
+        title: firstItem.title,
+        pubDate: firstItem.pubDate,
+        descriptionLength: firstItem.descriptionHtml.length,
+      },
+      events: eventInputs,
+    };
+  } catch (error) {
+    console.error("Test failed", error);
+    return { error: String(error) };
+  }
 }
 
 export default {
@@ -240,6 +213,19 @@ export default {
       try {
         const stats = await run(env);
         return new Response(JSON.stringify({ ok: true, stats }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ ok: false, error: String(error) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+    if (url.pathname === "/test") {
+      try {
+        const result = await testFirstItem(env);
+        return new Response(JSON.stringify(result, null, 2), {
           headers: { "Content-Type": "application/json" },
         });
       } catch (error) {

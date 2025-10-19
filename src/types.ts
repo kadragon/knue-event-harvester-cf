@@ -28,10 +28,12 @@ export interface AiSummary {
 }
 
 export interface CalendarEventInput {
-  title: string;
-  description: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
+title: string;
+description: string;
+startDate: string; // YYYY-MM-DD
+endDate: string; // YYYY-MM-DD
+  startTime?: string; // HH:MM (optional, if not provided, allday)
+  endTime?: string; // HH:MM (optional)
 }
 
 export interface ProcessedRecord {

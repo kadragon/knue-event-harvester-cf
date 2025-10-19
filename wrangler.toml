@@ -12,7 +12,7 @@ id = "68a5f081c9544cbe975b7de5f29118b1"
 preview_id = "f2c768d9033e4a848a5b0607739a6912"
 
 [vars]
-PREVIEW_PARSER_BASE = "https://knue-www-preview-parser-cf.kangdongouk.workers.dev/"
+PREVIEW_PARSER_BASE = "https://knue-www-preview-parser-cf.kangdongouk.workers.dev"
 OPENAI_CONTENT_MODEL = "gpt-4o-mini"
 OPENAI_VISION_MODEL = "gpt-4o-mini"
 SIMILARITY_THRESHOLD = "0.85"
