@@ -1,4 +1,8 @@
-import { generateEventInfos, type AiEnv } from "./lib/ai";
+import { generateEventInfos, generateSummary, type AiEnv } from "./lib/ai";
+import type {
+  ScheduledController,
+  ExecutionContext,
+} from "@cloudflare/workers-types";
 import {
   obtainAccessToken,
   listEvents,
@@ -9,8 +13,17 @@ import {
 import { isDuplicate, computeHash } from "./lib/dedupe";
 
 import { parseRss } from "./lib/rss";
-import { getProcessedRecord, putProcessedRecord, type StateEnv } from "./lib/state";
-import type { CalendarEventInput, ProcessedRecord, RssItem } from "./types";
+import {
+  getProcessedRecord,
+  putProcessedRecord,
+  type StateEnv,
+} from "./lib/state";
+import type {
+  CalendarEventInput,
+  ProcessedRecord,
+  RssItem,
+  AiSummary,
+} from "./types";
 
 interface Env extends StateEnv, CalendarEnv, AiEnv {
   OPENAI_API_KEY: string;
@@ -59,20 +72,28 @@ function buildDescription(
   htmlDescription: string,
   attachmentText: string,
   previewText?: string,
-  imageText?: string,
+  imageText?: string
 ): string {
   const parts: string[] = [];
   parts.push(summary.summary);
   if (summary.highlights.length > 0) {
-    parts.push("주요 포인트:\n" + summary.highlights.map((line) => `- ${line}`).join("\n"));
+    parts.push(
+      "주요 포인트:\n" +
+        summary.highlights.map((line) => `- ${line}`).join("\n")
+    );
   }
   if (summary.actionItems.length > 0) {
-    parts.push("확인/신청 사항:\n" + summary.actionItems.map((line) => `- ${line}`).join("\n"));
+    parts.push(
+      "확인/신청 사항:\n" +
+        summary.actionItems.map((line) => `- ${line}`).join("\n")
+    );
   }
   if (summary.links.length > 0 || item.link) {
     const linkLines = [...summary.links];
     if (item.link) linkLines.unshift(item.link);
-    parts.push("관련 링크:\n" + linkLines.map((link) => `- ${link}`).join("\n"));
+    parts.push(
+      "관련 링크:\n" + linkLines.map((link) => `- ${link}`).join("\n")
+    );
   }
   if (attachmentText) parts.push(attachmentText);
   if (previewText) parts.push(`미리보기 요약:\n${previewText}`);
@@ -88,13 +109,36 @@ async function processNewItem(
   item: RssItem,
   accessToken: string,
   existingEvents: GoogleCalendarEvent[],
-  similarityThreshold: number,
+  similarityThreshold: number
 ): Promise<GoogleCalendarEvent[]> {
+  const summary = await generateSummary(env, {
+    title: item.title,
+    description: item.descriptionHtml,
+    previewText: undefined,
+    attachmentText: item.attachment
+      ? item.attachment.filename
+        ? `첨부파일: ${item.attachment.filename}`
+        : undefined
+      : undefined,
+    link: item.link,
+    pubDate: item.pubDate,
+  });
   const eventInputs = await generateEventInfos(env, item);
   const createdEvents: GoogleCalendarEvent[] = [];
 
   for (const eventInput of eventInputs) {
-    const description = buildDescription(item, eventInput.description);
+    const description = buildDescription(
+      item,
+      summary,
+      item.descriptionHtml,
+      item.attachment
+        ? item.attachment.filename
+          ? `첨부파일: ${item.attachment.filename}`
+          : ""
+        : "",
+      undefined,
+      undefined
+    );
     eventInput.description = description;
 
     const hash = await computeHash(eventInput);
@@ -110,7 +154,9 @@ async function processNewItem(
       meta,
     });
     if (duplicate) {
-      console.log(`Duplicate detected for ${item.id} event: ${eventInput.title}`);
+      console.log(
+        `Duplicate detected for ${item.id} event: ${eventInput.title}`
+      );
       continue;
     }
 
@@ -127,8 +173,6 @@ async function processNewItem(
 
   return createdEvents;
 }
-
-
 
 async function run(env: Env): Promise<{ processed: number; created: number }> {
   const rssXml = await fetchRssFeed();
@@ -156,7 +200,13 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
       continue;
     }
     try {
-      const results = await processNewItem(env, item, accessToken, existing, similarityThreshold);
+      const results = await processNewItem(
+        env,
+        item,
+        accessToken,
+        existing,
+        similarityThreshold
+      );
       processed += 1;
       created += results.length;
     } catch (error) {
@@ -204,7 +254,7 @@ export default {
         })
         .catch((error) => {
           console.error("Scheduled run failed", error);
-        }),
+        })
     );
   },
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -216,10 +266,13 @@ export default {
           headers: { "Content-Type": "application/json" },
         });
       } catch (error) {
-        return new Response(JSON.stringify({ ok: false, error: String(error) }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ ok: false, error: String(error) }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
     }
     if (url.pathname === "/test") {
@@ -229,10 +282,13 @@ export default {
           headers: { "Content-Type": "application/json" },
         });
       } catch (error) {
-        return new Response(JSON.stringify({ ok: false, error: String(error) }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ ok: false, error: String(error) }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
     }
     return new Response("knue-event-harvester");

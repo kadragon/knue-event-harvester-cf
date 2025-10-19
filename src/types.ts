@@ -27,6 +27,15 @@ export interface AiSummary {
   extractedText?: string;
 }
 
+export interface AiEvent {
+  title?: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  startTime?: string;
+  endTime?: string;
+}
+
 export interface CalendarEventInput {
 title: string;
 description: string;

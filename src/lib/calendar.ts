@@ -36,8 +36,8 @@ type JwtPayload = Record<string, unknown>;
 function base64UrlEncode(buffer: ArrayBuffer | Uint8Array): string {
   const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
   const base64 = btoa(binary);
   return base64.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");

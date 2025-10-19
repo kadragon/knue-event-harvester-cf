@@ -1,4 +1,4 @@
-import type { AiSummary, PreviewContent, CalendarEventInput, RssItem } from "../types";
+import type { AiSummary, PreviewContent, CalendarEventInput, RssItem, AiEvent } from "../types";
 
 export interface AiEnv {
   OPENAI_API_KEY: string;
@@ -195,7 +195,8 @@ async function parseEventJsonArray(content: string | undefined, pubDate: string)
     console.log("Parsed JSON data:", data);
     if (Array.isArray(data.events)) {
       console.log("Found events array");
-      return data.events.map((event: any) => ({
+      const events = data.events as AiEvent[];
+      return events.map((event) => ({
         title: event.title ?? EVENT_JSON_FALLBACK.title,
         description: event.description ?? EVENT_JSON_FALLBACK.description,
         startDate: event.startDate ?? pubDate,
@@ -206,15 +207,16 @@ async function parseEventJsonArray(content: string | undefined, pubDate: string)
     } else {
       console.log("No events array, treating as single event");
       // Single event fallback
-      const event = {
-        title: data.title ?? EVENT_JSON_FALLBACK.title,
-        description: data.description ?? EVENT_JSON_FALLBACK.description,
-        startDate: data.startDate ?? pubDate,
-        endDate: data.endDate ?? (data.startDate ?? pubDate),
-        startTime: typeof data.startTime === "string" ? data.startTime : undefined,
-        endTime: typeof data.endTime === "string" ? data.endTime : undefined,
+      const event = data as AiEvent;
+      const result = {
+        title: event.title ?? EVENT_JSON_FALLBACK.title,
+        description: event.description ?? EVENT_JSON_FALLBACK.description,
+        startDate: event.startDate ?? pubDate,
+        endDate: event.endDate ?? (event.startDate ?? pubDate),
+        startTime: typeof event.startTime === "string" ? event.startTime : undefined,
+        endTime: typeof event.endTime === "string" ? event.endTime : undefined,
       };
-      return [event];
+      return [result];
     }
   } catch (error) {
     console.error("Failed to parse event JSON", error, content);
