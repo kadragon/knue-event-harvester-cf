@@ -274,34 +274,6 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
   return { processed, created };
 }
 
-async function testFirstItem(env: Env): Promise<any> {
-  try {
-    const rssXml = await fetchRssFeed();
-    const items = parseRss(rssXml);
-    if (items.length === 0) {
-      return { error: "No RSS items found" };
-    }
-    const firstItem = items[0];
-    console.log("Testing first RSS item:", firstItem.title, firstItem.id);
-
-    const eventInputs = await generateEventInfos(env, firstItem);
-    console.log("Extracted events:", eventInputs);
-
-    return {
-      item: {
-        id: firstItem.id,
-        title: firstItem.title,
-        pubDate: firstItem.pubDate,
-        descriptionLength: firstItem.descriptionHtml.length,
-      },
-      events: eventInputs,
-    };
-  } catch (error) {
-    console.error("Test failed", error);
-    return { error: String(error) };
-  }
-}
-
 export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(
@@ -313,41 +285,5 @@ export default {
           console.error("Scheduled run failed", error);
         })
     );
-  },
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname === "/health") {
-      try {
-        const stats = await run(env);
-        return new Response(JSON.stringify({ ok: true, stats }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (error) {
-        return new Response(
-          JSON.stringify({ ok: false, error: String(error) }),
-          {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-    }
-    if (url.pathname === "/test") {
-      try {
-        const result = await testFirstItem(env);
-        return new Response(JSON.stringify(result, null, 2), {
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (error) {
-        return new Response(
-          JSON.stringify({ ok: false, error: String(error) }),
-          {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-    }
-    return new Response("knue-event-harvester");
   },
 };
