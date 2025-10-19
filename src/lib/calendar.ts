@@ -198,7 +198,7 @@ export async function createEvent(
   if (input.startTime && input.endTime) {
     // Timed event
     const startDateTime = `${startDate}T${input.startTime}:00+09:00`; // Assume KST
-    const endDateTime = startDate === endDate ? `${endDate}T${input.endTime}:00+09:00` : `${endDate}T${input.endTime}:00+09:00`;
+    const endDateTime = `${endDate}T${input.endTime}:00+09:00`;
     start = { dateTime: startDateTime };
     end = { dateTime: endDateTime };
   } else {

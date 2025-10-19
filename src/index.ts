@@ -98,9 +98,7 @@ function buildDescription(
   item: RssItem,
   summary: AiSummary,
   htmlDescription: string,
-  attachmentText: string,
-  previewText?: string,
-  imageText?: string
+  attachmentText: string
 ): string {
   const parts: string[] = [];
   parts.push(summary.summary);
@@ -124,8 +122,6 @@ function buildDescription(
     );
   }
   if (attachmentText) parts.push(attachmentText);
-  if (previewText) parts.push(`미리보기 요약:\n${previewText}`);
-  if (imageText) parts.push(`OCR 추출 텍스트:\n${imageText}`);
   if (htmlDescription) {
     parts.push("원문 본문:\n" + htmlDescription);
   }
@@ -154,7 +150,14 @@ async function processNewItem(
   const eventInputs = await generateEventInfos(env, item);
   const createdEvents: GoogleCalendarEvent[] = [];
 
-  for (const eventInput of eventInputs) {
+  for (let eventInput of eventInputs) {
+    // Default endTime to startTime to ensure timed events are consistently deduplicated
+    if (eventInput.startTime && !eventInput.endTime) {
+      eventInput = {
+        ...eventInput,
+        endTime: eventInput.startTime,
+      };
+    }
     const description = buildDescription(
       item,
       summary,
@@ -163,9 +166,7 @@ async function processNewItem(
         ? item.attachment.filename
           ? `첨부파일: ${item.attachment.filename}`
           : ""
-        : "",
-      undefined,
-      undefined
+        : ""
     );
     eventInput.description = description;
 

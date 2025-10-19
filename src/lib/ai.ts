@@ -187,40 +187,57 @@ const EVENT_JSON_FALLBACK: CalendarEventInput = {
   endTime: undefined,
 };
 
+function buildEventInput(event: AiEvent, pubDate: string): CalendarEventInput {
+  return {
+    title: event.title ?? EVENT_JSON_FALLBACK.title,
+    description: event.description ?? EVENT_JSON_FALLBACK.description,
+    startDate: event.startDate ?? pubDate,
+    endDate: event.endDate ?? (event.startDate ?? pubDate),
+    startTime: typeof event.startTime === "string" ? event.startTime : undefined,
+    endTime: typeof event.endTime === "string" ? event.endTime : undefined,
+  };
+}
+
 async function parseEventJsonArray(content: string | undefined, pubDate: string): Promise<CalendarEventInput[]> {
-  console.log("Parsing content:", content);
   if (!content) return [EVENT_JSON_FALLBACK];
   try {
     const data = JSON.parse(content);
-    console.log("Parsed JSON data:", data);
     if (Array.isArray(data.events)) {
-      console.log("Found events array");
       const events = data.events as AiEvent[];
-      return events.map((event) => ({
-        title: event.title ?? EVENT_JSON_FALLBACK.title,
-        description: event.description ?? EVENT_JSON_FALLBACK.description,
-        startDate: event.startDate ?? pubDate,
-        endDate: event.endDate ?? (event.startDate ?? pubDate),
-        startTime: typeof event.startTime === "string" ? event.startTime : undefined,
-        endTime: typeof event.endTime === "string" ? event.endTime : undefined,
-      })).filter((event) => event.title && event.description);
+      return events
+        .map((event) => buildEventInput(event, pubDate))
+        .filter((event) => event.title && event.description);
     } else {
-      console.log("No events array, treating as single event");
       // Single event fallback
       const event = data as AiEvent;
-      const result = {
-        title: event.title ?? EVENT_JSON_FALLBACK.title,
-        description: event.description ?? EVENT_JSON_FALLBACK.description,
-        startDate: event.startDate ?? pubDate,
-        endDate: event.endDate ?? (event.startDate ?? pubDate),
-        startTime: typeof event.startTime === "string" ? event.startTime : undefined,
-        endTime: typeof event.endTime === "string" ? event.endTime : undefined,
-      };
-      return [result];
+      return [buildEventInput(event, pubDate)];
     }
   } catch (error) {
     console.error("Failed to parse event JSON", error, content);
     return [EVENT_JSON_FALLBACK];
+  }
+}
+
+async function fetchEventInfoWithFallback(
+  env: AiEnv,
+  payload: Record<string, unknown>,
+): Promise<Response> {
+  const endpoint = buildOpenAIEndpoint(env);
+
+  try {
+    return await fetch(endpoint, {
+      method: "POST",
+      headers: buildHeaders(env),
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    console.error("AI request failed, trying direct OpenAI", error);
+    // Fallback to direct OpenAI
+    return fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: buildHeaders(env),
+      body: JSON.stringify(payload),
+    });
   }
 }
 
@@ -279,66 +296,32 @@ RSS 링크: ${item.link}
     temperature: 0.2,
   };
 
-  console.log("AI Prompt for event extraction:", prompt);
-  console.log("AI Payload model:", payload.model);
-
-  let response: Response;
-  const endpoint = buildOpenAIEndpoint(env);
-
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: buildHeaders(env),
-      body: JSON.stringify(payload),
-    });
-  } catch (error) {
-    console.error("AI request failed, trying direct OpenAI", error);
-    // Fallback to direct OpenAI
-    const directEndpoint = "https://api.openai.com/v1/chat/completions";
-    response = await fetch(directEndpoint, {
-      method: "POST",
-      headers: buildHeaders(env),
-      body: JSON.stringify(payload),
-    });
-  }
+  let response = await fetchEventInfoWithFallback(env, payload);
 
   if (!response.ok) {
     const errorText = await response.text();
     console.error("Event info request failed", response.status, errorText);
 
     // If Gateway failed, try direct OpenAI
+    const endpoint = buildOpenAIEndpoint(env);
     if (endpoint.includes("gateway.ai.cloudflare.com")) {
-      console.log("Gateway failed, trying direct OpenAI");
-      const directEndpoint = "https://api.openai.com/v1/chat/completions";
-      const directResponse = await fetch(directEndpoint, {
+      response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: buildHeaders(env),
         body: JSON.stringify(payload),
       });
 
-      if (!directResponse.ok) {
-        console.error("Direct OpenAI also failed", directResponse.status, await directResponse.text());
+      if (!response.ok) {
+        console.error("Direct OpenAI also failed", response.status, await response.text());
         return [EVENT_JSON_FALLBACK];
       }
-
-      const directData = (await directResponse.json()) as OpenAIResponse;
-      const directAiResponse = directData.choices[0]?.message?.content;
-      console.log("Direct AI Response:", directAiResponse);
-
-      const parsed = parseEventJsonArray(directAiResponse, item.pubDate);
-      console.log("Parsed events from direct:", parsed);
-
-      return parsed;
+    } else {
+      return [EVENT_JSON_FALLBACK];
     }
-
-    return [EVENT_JSON_FALLBACK];
   }
+
   const data = (await response.json()) as OpenAIResponse;
   const aiResponse = data.choices[0]?.message?.content;
-  console.log("AI Response:", aiResponse);
 
-  const parsed = parseEventJsonArray(aiResponse, item.pubDate);
-  console.log("Parsed events:", parsed);
-
-  return parsed;
+  return parseEventJsonArray(aiResponse, item.pubDate);
 }

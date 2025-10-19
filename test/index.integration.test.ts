@@ -295,6 +295,18 @@ describe('Worker Integration Tests', () => {
       (obtainAccessToken as any).mockResolvedValue('test-token');
       (listEvents as any).mockResolvedValue([]);
       (getProcessedRecord as any).mockResolvedValue(null);
+      (generateSummary as any).mockResolvedValue({
+        summary: 'Test summary',
+        highlights: [],
+        actionItems: [],
+        links: [],
+      });
+      (generateEventInfos as any).mockResolvedValue([{
+        title: 'Test Event',
+        description: 'Test description',
+        startDate: '2025-10-15',
+        endDate: '2025-10-15',
+      }]);
       (htmlToText as any).mockImplementation(() => {
         throw new Error('HTML processing failed');
       });
