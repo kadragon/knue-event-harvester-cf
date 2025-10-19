@@ -141,28 +141,45 @@ export async function listEvents(
   token: string,
   params: { timeMin: string; timeMax: string },
 ): Promise<GoogleCalendarEvent[]> {
-  const url = new URL(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(env.GOOGLE_CALENDAR_ID)}/events`,
-  );
-  url.searchParams.set("singleEvents", "true");
-  url.searchParams.set("orderBy", "startTime");
-  url.searchParams.set("maxResults", "50");
-  url.searchParams.set("timeMin", params.timeMin);
-  url.searchParams.set("timeMax", params.timeMax);
+  const allEvents: GoogleCalendarEvent[] = [];
+  let nextPageToken: string | undefined;
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Failed to list events", response.status, errorText);
-    throw new Error(`Google Calendar list error ${response.status}`);
-  }
+  do {
+    const url = new URL(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(env.GOOGLE_CALENDAR_ID)}/events`,
+    );
+    url.searchParams.set("singleEvents", "true");
+    url.searchParams.set("orderBy", "startTime");
+    url.searchParams.set("maxResults", "50");
+    url.searchParams.set("timeMin", params.timeMin);
+    url.searchParams.set("timeMax", params.timeMax);
 
-  const data = (await response.json()) as { items?: GoogleCalendarEvent[] };
-  return data.items ?? [];
+    if (nextPageToken) {
+      url.searchParams.set("pageToken", nextPageToken);
+    }
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Failed to list events", response.status, errorText);
+      throw new Error(`Google Calendar list error ${response.status}`);
+    }
+
+    const data = (await response.json()) as {
+      items?: GoogleCalendarEvent[];
+      nextPageToken?: string;
+    };
+    if (data.items) {
+      allEvents.push(...data.items);
+    }
+    nextPageToken = data.nextPageToken;
+  } while (nextPageToken);
+
+  return allEvents;
 }
 
 export async function createEvent(
