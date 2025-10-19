@@ -157,6 +157,13 @@ async function processNewItem(
       console.log(
         `Duplicate detected for ${item.id} event: ${eventInput.title}`
       );
+      // 중복 감지 시에도 상태 저장 (다시 처리하지 않도록)
+      await putProcessedRecord(env, item.id, {
+        eventId: "duplicate-skip",
+        nttNo: item.id,
+        processedAt: new Date().toISOString(),
+        hash,
+      });
       continue;
     }
 
@@ -169,6 +176,19 @@ async function processNewItem(
     });
     existingEvents.push(created);
     createdEvents.push(created);
+  }
+
+  // 의미있는 일정이 없었을 때 상태 저장 (한 번 시도 후 더 이상 재시도하지 않음)
+  if (eventInputs.length === 0) {
+    console.log(
+      `No meaningful events extracted for item ${item.id}, marking as processed`
+    );
+    await putProcessedRecord(env, item.id, {
+      eventId: "",
+      nttNo: item.id,
+      processedAt: new Date().toISOString(),
+      hash: "",
+    });
   }
 
   return createdEvents;

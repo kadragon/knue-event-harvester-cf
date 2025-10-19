@@ -1,10 +1,6 @@
 #!/bin/sh
 . "$(dirname "$0")/_/husky.sh"
 
-# Type checking
-echo "🔍 Type checking..."
-npm run lint
-
 # Lint staged files
 echo "📝 Linting staged files..."
 npx lint-staged

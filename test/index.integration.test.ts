@@ -9,6 +9,7 @@ vi.mock('../src/lib/rss', () => ({
 
 vi.mock('../src/lib/ai', () => ({
   generateSummary: vi.fn(),
+  generateEventInfos: vi.fn(),
   extractTextFromImage: vi.fn(),
 }));
 
@@ -40,7 +41,7 @@ vi.mock('../src/lib/state', () => ({
 
 // Import after mocking
 import { parseRss } from '../src/lib/rss';
-import { generateSummary, extractTextFromImage } from '../src/lib/ai';
+import { generateSummary, generateEventInfos, extractTextFromImage } from '../src/lib/ai';
 import { obtainAccessToken, listEvents, createEvent } from '../src/lib/calendar';
 import { isDuplicate, computeHash } from '../src/lib/dedupe';
 import { htmlToText } from '../src/lib/html';
@@ -154,6 +155,14 @@ describe('Worker Integration Tests', () => {
         actionItems: [],
         links: [],
       });
+      (generateEventInfos as any).mockResolvedValue([{
+        title: 'Test Event',
+        description: 'Test description',
+        startDate: '2023-01-01',
+        endDate: '2023-01-01',
+        startTime: undefined,
+        endTime: undefined,
+      }]);
       (computeHash as any).mockResolvedValue('test-hash');
       (isDuplicate as any).mockResolvedValue(false);
       (createEvent as any).mockResolvedValue(mockEvent);
@@ -241,6 +250,14 @@ describe('Worker Integration Tests', () => {
         actionItems: [],
         links: [],
       });
+      (generateEventInfos as any).mockResolvedValue([{
+        title: 'Test Event',
+        description: 'Test description',
+        startDate: '2023-01-01',
+        endDate: '2023-01-01',
+        startTime: undefined,
+        endTime: undefined,
+      }]);
       (computeHash as any).mockResolvedValue('test-hash');
       (isDuplicate as any).mockResolvedValue(true); // Duplicate detected
       (putProcessedRecord as any).mockResolvedValue(undefined);

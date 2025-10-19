@@ -42,7 +42,10 @@ export async function fetchPreviewContent(
   if (!id) {
     return { sourceType: "none" };
   }
-  const endpoint = `${env.PREVIEW_PARSER_BASE}?atchmnflNo=${id}`;
+  const base = env.PREVIEW_PARSER_BASE.endsWith("/")
+    ? env.PREVIEW_PARSER_BASE
+    : env.PREVIEW_PARSER_BASE + "/";
+  const endpoint = `${base}${id}`;
   const response = await fetcher(endpoint, {
     headers: {
       Authorization: `Bearer ${env.BEARER_TOKEN}`,
