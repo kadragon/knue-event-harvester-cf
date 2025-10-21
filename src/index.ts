@@ -260,6 +260,14 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
       alreadyProcessedItems.push(item.id);
       processed += 1;
       continue;
+    } else if (Number.isNaN(itemId)) {
+      // Fallback for non-numeric IDs to prevent reprocessing
+      const already = await getProcessedRecord(env, item.id);
+      if (already) {
+        alreadyProcessedItems.push(item.id);
+        processed += 1;
+        continue;
+      }
     }
     try {
       const results = await processNewItem(

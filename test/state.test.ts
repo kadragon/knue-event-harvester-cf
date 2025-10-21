@@ -152,6 +152,14 @@ describe('State Module', () => {
 
       expect(result).toBe(999999999);
     });
+
+    it('should return 0 when stored value is not a number', async () => {
+      mockKV.get.mockResolvedValue('not-a-number');
+
+      const result = await getMaxProcessedId(mockEnv);
+
+      expect(result).toBe(0);
+    });
   });
 
   describe('updateMaxProcessedId', () => {
@@ -198,6 +206,15 @@ describe('State Module', () => {
       await updateMaxProcessedId(mockEnv, '999999999');
 
       expect(mockKV.put).toHaveBeenCalledWith('_max_processed_id', '999999999');
+    });
+
+    it('should not update and not throw when new ID is not a number', async () => {
+      mockKV.get.mockResolvedValue('5000');
+      mockKV.put.mockResolvedValue(undefined);
+
+      await updateMaxProcessedId(mockEnv, 'not-a-number');
+
+      expect(mockKV.put).not.toHaveBeenCalled();
     });
   });
 });
