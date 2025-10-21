@@ -249,13 +249,7 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
   let maxSuccessfulId = 0; // Track max successful numeric ID for batch update
 
   for (const item of items) {
-    // Filter: Only process items with pubDate within last 7 days
-    if (!isWithinLastWeek(item.pubDate)) {
-      skippedItems.push(`Item ${item.id} - pubDate ${item.pubDate}`);
-      continue;
-    }
-
-    // Skip items that were already processed (based on max ID)
+    // Filter 1: Skip items that were already processed (based on max ID) - O(1) check
     const itemId = Number.parseInt(item.id, 10);
     if (itemId <= maxProcessedId) {
       alreadyProcessedItems.push(item.id);
@@ -269,6 +263,12 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
         processed += 1;
         continue;
       }
+    }
+
+    // Filter 2: Only process items with pubDate within last 7 days
+    if (!isWithinLastWeek(item.pubDate)) {
+      skippedItems.push(`Item ${item.id} - pubDate ${item.pubDate}`);
+      continue;
     }
     try {
       const results = await processNewItem(
