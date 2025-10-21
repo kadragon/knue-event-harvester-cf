@@ -24,6 +24,9 @@ const JSON_FALLBACK: AiSummary = {
   links: [],
 };
 
+const OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+const AI_GATEWAY_ENDPOINT_TEMPLATE = "https://gateway.ai.cloudflare.com/v1/{accountId}/{gatewayName}/openai/chat/completions";
+
 function decodeHtmlEntities(text: string): string {
   return text
     .replace(/&lt;/g, '<')
@@ -42,10 +45,10 @@ function decodeHtmlEntities(text: string): string {
 function buildOpenAIEndpoint(env: AiEnv): string {
   // Cloudflare AI Gateway 사용 설정
   if (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_GATEWAY_NAME) {
-    return `https://gateway.ai.cloudflare.com/v1/account/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/${env.CLOUDFLARE_AI_GATEWAY_NAME}/openai/chat/completions`;
+    return AI_GATEWAY_ENDPOINT_TEMPLATE.replace("{accountId}", env.CLOUDFLARE_ACCOUNT_ID).replace("{gatewayName}", env.CLOUDFLARE_AI_GATEWAY_NAME);
   }
   // AI Gateway 미설정시 OpenAI 직접 호출
-  return "https://api.openai.com/v1/chat/completions";
+  return OPENAI_ENDPOINT;
 }
 
 function buildHeaders(env: AiEnv): HeadersInit {
