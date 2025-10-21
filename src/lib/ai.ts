@@ -42,7 +42,7 @@ function decodeHtmlEntities(text: string): string {
 function buildOpenAIEndpoint(env: AiEnv): string {
   // Cloudflare AI Gateway 사용 설정
   if (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_GATEWAY_NAME) {
-    return `https://gateway.ai.cloudflare.com/v1/account/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/${env.CLOUDFLARE_AI_GATEWAY_NAME}/openai/chat/completions`;
+    return `https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${env.CLOUDFLARE_AI_GATEWAY_NAME}/openai/chat/completions`;
   }
   // AI Gateway 미설정시 OpenAI 직접 호출
   return "https://api.openai.com/v1/chat/completions";

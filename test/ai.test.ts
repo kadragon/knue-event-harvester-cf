@@ -98,7 +98,7 @@ describe('AI Module', () => {
       });
 
       const callArgs = fetchMock.mock.calls[0];
-      expect(callArgs[0]).toBe('https://gateway.ai.cloudflare.com/v1/account/test-account/ai-gateway/test-gateway/openai/chat/completions');
+      expect(callArgs[0]).toBe('https://gateway.ai.cloudflare.com/v1/test-account/test-gateway/openai/chat/completions');
       expect(callArgs[1].headers['cf-aig-authorization']).toBe('Bearer gateway-token');
     });
 
