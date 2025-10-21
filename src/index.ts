@@ -249,20 +249,23 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
   let maxSuccessfulId = 0; // Track max successful numeric ID for batch update
 
   for (const item of items) {
-    // Filter: Only process items with pubDate within last 7 days
-    if (!isWithinLastWeek(item.pubDate)) {
-      skippedItems.push(`Item ${item.id} - pubDate ${item.pubDate}`);
-      continue;
-    }
-
-    // Skip items that were already processed (based on max ID)
+    // Filter 1: Skip items that were already processed (based on max ID) - O(1) check
     const itemId = Number.parseInt(item.id, 10);
     if (itemId <= maxProcessedId) {
       alreadyProcessedItems.push(item.id);
       processed += 1;
       continue;
-    } else if (Number.isNaN(itemId)) {
-      // Fallback for non-numeric IDs to prevent reprocessing
+    }
+
+    // Filter 2: Only process items with pubDate within last 7 days
+    if (!isWithinLastWeek(item.pubDate)) {
+      skippedItems.push(`Item ${item.id} - pubDate ${item.pubDate}`);
+      continue;
+    }
+
+    // Filter 3: Fallback for non-numeric IDs to prevent reprocessing
+    // Only check KV after passing date filter to avoid unnecessary I/O on stale items
+    if (Number.isNaN(itemId)) {
       const already = await getProcessedRecord(env, item.id);
       if (already) {
         alreadyProcessedItems.push(item.id);
