@@ -37,6 +37,8 @@ vi.mock('../src/lib/preview', () => ({
 vi.mock('../src/lib/state', () => ({
   getProcessedRecord: vi.fn(),
   putProcessedRecord: vi.fn(),
+  getMaxProcessedId: vi.fn(),
+  updateMaxProcessedId: vi.fn(),
 }));
 
 // Import after mocking

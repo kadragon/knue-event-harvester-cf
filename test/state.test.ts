@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getProcessedRecord, putProcessedRecord, type StateEnv } from '../src/lib/state';
+import { getProcessedRecord, putProcessedRecord, getMaxProcessedId, updateMaxProcessedId, type StateEnv } from '../src/lib/state';
 import type { ProcessedRecord } from '../src/types';
 
 // Mock KV namespace
@@ -115,6 +115,106 @@ describe('State Module', () => {
       expect(retrieved).toEqual(mockRecord);
       expect(mockKV.put).toHaveBeenCalledWith('round-trip-id', JSON.stringify(mockRecord));
       expect(mockKV.get).toHaveBeenCalledWith('round-trip-id', 'json');
+    });
+  });
+
+  describe('getMaxProcessedId', () => {
+    it('should return stored max ID', async () => {
+      mockKV.get.mockResolvedValue('5000');
+
+      const result = await getMaxProcessedId(mockEnv);
+
+      expect(result).toBe(5000);
+      expect(mockKV.get).toHaveBeenCalledWith('_max_processed_id', 'text');
+    });
+
+    it('should return 0 when no max ID is stored', async () => {
+      mockKV.get.mockResolvedValue(null);
+
+      const result = await getMaxProcessedId(mockEnv);
+
+      expect(result).toBe(0);
+      expect(mockKV.get).toHaveBeenCalledWith('_max_processed_id', 'text');
+    });
+
+    it('should return 0 when max ID is undefined', async () => {
+      mockKV.get.mockResolvedValue(undefined);
+
+      const result = await getMaxProcessedId(mockEnv);
+
+      expect(result).toBe(0);
+    });
+
+    it('should parse large ID values correctly', async () => {
+      mockKV.get.mockResolvedValue('999999999');
+
+      const result = await getMaxProcessedId(mockEnv);
+
+      expect(result).toBe(999999999);
+    });
+
+    it('should return 0 when stored value is not a number', async () => {
+      mockKV.get.mockResolvedValue('not-a-number');
+
+      const result = await getMaxProcessedId(mockEnv);
+
+      expect(result).toBe(0);
+    });
+  });
+
+  describe('updateMaxProcessedId', () => {
+    it('should update max ID when new ID is larger', async () => {
+      mockKV.get.mockResolvedValue('5000');
+      mockKV.put.mockResolvedValue(undefined);
+
+      await updateMaxProcessedId(mockEnv, '5100');
+
+      expect(mockKV.put).toHaveBeenCalledWith('_max_processed_id', '5100');
+    });
+
+    it('should not update when new ID is smaller than current max', async () => {
+      mockKV.get.mockResolvedValue('5000');
+      mockKV.put.mockResolvedValue(undefined);
+
+      await updateMaxProcessedId(mockEnv, '4999');
+
+      expect(mockKV.put).not.toHaveBeenCalled();
+    });
+
+    it('should update when current max is 0 (first time)', async () => {
+      mockKV.get.mockResolvedValue(null);
+      mockKV.put.mockResolvedValue(undefined);
+
+      await updateMaxProcessedId(mockEnv, '100');
+
+      expect(mockKV.put).toHaveBeenCalledWith('_max_processed_id', '100');
+    });
+
+    it('should handle equal IDs correctly (not update)', async () => {
+      mockKV.get.mockResolvedValue('5000');
+      mockKV.put.mockResolvedValue(undefined);
+
+      await updateMaxProcessedId(mockEnv, '5000');
+
+      expect(mockKV.put).not.toHaveBeenCalled();
+    });
+
+    it('should update max ID for large values', async () => {
+      mockKV.get.mockResolvedValue('999999998');
+      mockKV.put.mockResolvedValue(undefined);
+
+      await updateMaxProcessedId(mockEnv, '999999999');
+
+      expect(mockKV.put).toHaveBeenCalledWith('_max_processed_id', '999999999');
+    });
+
+    it('should not update and not throw when new ID is not a number', async () => {
+      mockKV.get.mockResolvedValue('5000');
+      mockKV.put.mockResolvedValue(undefined);
+
+      await updateMaxProcessedId(mockEnv, 'not-a-number');
+
+      expect(mockKV.put).not.toHaveBeenCalled();
     });
   });
 });

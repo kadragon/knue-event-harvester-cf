@@ -16,6 +16,8 @@ import { parseRss } from "./lib/rss";
 import {
   getProcessedRecord,
   putProcessedRecord,
+  getMaxProcessedId,
+  updateMaxProcessedId,
   type StateEnv,
 } from "./lib/state";
 import type {
@@ -231,6 +233,7 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
   const now = new Date();
   const start = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
   const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const maxProcessedId = await getMaxProcessedId(env);
   const [existing, similarityThreshold] = await Promise.all([
     listEvents(env, accessToken, {
       timeMin: start.toISOString(),
@@ -241,20 +244,31 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
 
   let processed = 0;
   let created = 0;
+  const skippedItems: string[] = [];
+  const alreadyProcessedItems: string[] = [];
+  let maxSuccessfulId = 0; // Track max successful numeric ID for batch update
 
   for (const item of items) {
     // Filter: Only process items with pubDate within last 7 days
     if (!isWithinLastWeek(item.pubDate)) {
-      console.log(
-        `Skipping item ${item.id} - pubDate ${item.pubDate} is older than 1 week`
-      );
+      skippedItems.push(`Item ${item.id} - pubDate ${item.pubDate}`);
       continue;
     }
 
-    const already = await getProcessedRecord(env, item.id);
-    if (already) {
+    // Skip items that were already processed (based on max ID)
+    const itemId = Number.parseInt(item.id, 10);
+    if (itemId <= maxProcessedId) {
+      alreadyProcessedItems.push(item.id);
       processed += 1;
       continue;
+    } else if (Number.isNaN(itemId)) {
+      // Fallback for non-numeric IDs to prevent reprocessing
+      const already = await getProcessedRecord(env, item.id);
+      if (already) {
+        alreadyProcessedItems.push(item.id);
+        processed += 1;
+        continue;
+      }
     }
     try {
       const results = await processNewItem(
@@ -266,9 +280,30 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
       );
       processed += 1;
       created += results.length;
+
+      // Track successful numeric ID for batch update after loop completes
+      if (!Number.isNaN(itemId) && itemId > maxSuccessfulId) {
+        maxSuccessfulId = itemId;
+      }
     } catch (error) {
       console.error("Failed to process item", item.id, error);
     }
+  }
+
+  // Update max processed ID only after batch completes
+  // This ensures failed items are retried in the next run, not skipped
+  if (maxSuccessfulId > 0) {
+    await updateMaxProcessedId(env, maxSuccessfulId.toString());
+  }
+
+  if (skippedItems.length > 0) {
+    console.log(
+      `Skipped ${skippedItems.length} items (older than 1 week):\n${skippedItems.join("\n")}`
+    );
+  }
+
+  if (alreadyProcessedItems.length > 0) {
+    console.log(`Already processed ${alreadyProcessedItems.length} items (max_id: ${maxProcessedId})`);
   }
 
   return { processed, created };
