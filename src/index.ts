@@ -16,6 +16,8 @@ import { parseRss } from "./lib/rss";
 import {
   getProcessedRecord,
   putProcessedRecord,
+  getMaxProcessedId,
+  updateMaxProcessedId,
   type StateEnv,
 } from "./lib/state";
 import type {
@@ -231,6 +233,7 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
   const now = new Date();
   const start = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
   const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const maxProcessedId = await getMaxProcessedId(env);
   const [existing, similarityThreshold] = await Promise.all([
     listEvents(env, accessToken, {
       timeMin: start.toISOString(),
@@ -241,18 +244,20 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
 
   let processed = 0;
   let created = 0;
+  const skippedItems: string[] = [];
+  const alreadyProcessedItems: string[] = [];
 
   for (const item of items) {
     // Filter: Only process items with pubDate within last 7 days
     if (!isWithinLastWeek(item.pubDate)) {
-      console.log(
-        `Skipping item ${item.id} - pubDate ${item.pubDate} is older than 1 week`
-      );
+      skippedItems.push(`Item ${item.id} - pubDate ${item.pubDate}`);
       continue;
     }
 
-    const already = await getProcessedRecord(env, item.id);
-    if (already) {
+    // Skip items that were already processed (based on max ID)
+    const itemId = Number.parseInt(item.id, 10);
+    if (itemId <= maxProcessedId) {
+      alreadyProcessedItems.push(item.id);
       processed += 1;
       continue;
     }
@@ -266,9 +271,20 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
       );
       processed += 1;
       created += results.length;
+      await updateMaxProcessedId(env, item.id);
     } catch (error) {
       console.error("Failed to process item", item.id, error);
     }
+  }
+
+  if (skippedItems.length > 0) {
+    console.log(
+      `Skipped ${skippedItems.length} items (older than 1 week):\n${skippedItems.join("\n")}`
+    );
+  }
+
+  if (alreadyProcessedItems.length > 0) {
+    console.log(`Already processed ${alreadyProcessedItems.length} items (max_id: ${maxProcessedId})`);
   }
 
   return { processed, created };
