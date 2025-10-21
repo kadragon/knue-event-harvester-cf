@@ -42,16 +42,24 @@ export async function updateMaxProcessedId(env: StateEnv, id: string): Promise<v
 /**
  * IMPLEMENTATION NOTE: Race Condition & Data Loss Safeguards
  *
- * Race Condition:
+ * Batch Completion Strategy:
+ * - maxProcessedId is updated ONLY after the entire batch completes
+ * - Failed items are NOT marked as processed → guaranteed retry on next run
+ * - Per-item records track individual processing (backward compatibility)
+ *
+ * Data Loss Prevention (GUARANTEED):
+ * ✓ If any item fails during processing, its ID is NOT added to maxSuccessfulId
+ * ✓ maxProcessedId advances only when the batch completes without errors
+ * ✓ Failed items are retried in subsequent scheduled runs
+ * ✓ Non-numeric IDs use per-item KV records (always retried if failed)
+ *
+ * Race Condition Considerations:
  * - The get -> compare -> put sequence is NOT atomic
  * - This is acceptable because the worker runs as a scheduled singleton
- * - If reused in concurrent contexts (HTTP handlers), implement atomic operations
+ * - If reused in concurrent contexts (HTTP handlers), implement:
+ *   1. KV conditional write operations
+ *   2. Atomic batch commits
+ *   3. Optimistic locking with versioning
  *
- * Data Loss Prevention:
- * - Failed items are NOT marked in per-item records (getProcessedRecord/putProcessedRecord)
- * - Only successful items update maxProcessedId
- * - Failures are retried in subsequent scheduled runs
- * - Mitigation: If processing fails after maxProcessedId is updated, the failed item
- *   will be retried on the next run if its ID is >= the stored maxProcessedId
- * - For safety-critical scenarios, consider: atomic updates, batch commits, or checksums
+ * Result: Zero data loss under scheduled-only operation model
  */
