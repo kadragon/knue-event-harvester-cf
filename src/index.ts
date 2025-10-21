@@ -255,20 +255,23 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
       alreadyProcessedItems.push(item.id);
       processed += 1;
       continue;
-    } else if (Number.isNaN(itemId)) {
-      // Fallback for non-numeric IDs to prevent reprocessing
-      const already = await getProcessedRecord(env, item.id);
-      if (already) {
-        alreadyProcessedItems.push(item.id);
-        processed += 1;
-        continue;
-      }
     }
 
     // Filter 2: Only process items with pubDate within last 7 days
     if (!isWithinLastWeek(item.pubDate)) {
       skippedItems.push(`Item ${item.id} - pubDate ${item.pubDate}`);
       continue;
+    }
+
+    // Filter 3: Fallback for non-numeric IDs to prevent reprocessing
+    // Only check KV after passing date filter to avoid unnecessary I/O on stale items
+    if (Number.isNaN(itemId)) {
+      const already = await getProcessedRecord(env, item.id);
+      if (already) {
+        alreadyProcessedItems.push(item.id);
+        processed += 1;
+        continue;
+      }
     }
     try {
       const results = await processNewItem(
