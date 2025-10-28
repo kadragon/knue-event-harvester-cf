@@ -19,6 +19,12 @@ SIMILARITY_THRESHOLD = "0.85"
 LOOKBACK_DAYS = "30"
 GOOGLE_CALENDAR_ID = "b71b5c37386baf51a196b6a1de3013726b55f51aa571d583f477cdacaf12bd5d@group.calendar.google.com"
 
+# Telegram notification settings
+# Set via: npx wrangler secret put TELEGRAM_BOT_TOKEN
+# Set via: npx wrangler secret put TELEGRAM_USER_ID
+# Format: TELEGRAM_BOT_TOKEN = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+# Format: TELEGRAM_USER_ID = "987654321"
+
 [placement]
 mode = "smart"
 
