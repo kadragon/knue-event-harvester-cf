@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { extractTextFromImage, generateSummary, type AiEnv } from '../src/lib/ai';
-import type { PreviewContent } from '../src/types';
+import { extractTextFromImage, generateSummary, generateEventInfos, type AiEnv } from '../../src/lib/ai';
+import type { PreviewContent, RssItem } from '../../src/types';
 
 // Mock fetch globally
 const fetchMock = vi.fn();
@@ -329,6 +329,256 @@ describe('AI Module', () => {
 
       const result = await extractTextFromImage(mockEnv, preview);
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe('generateEventInfos', () => {
+    let mockItem: RssItem;
+
+    beforeEach(() => {
+      mockItem = {
+        id: '123',
+        title: '2025학년도 봄학기 수강신청',
+        link: 'https://example.com/notice/123',
+        pubDate: '2025-10-28',
+        descriptionHtml: '<p>수강신청 일정: 2025-11-01 ~ 2025-11-03</p>',
+      };
+    });
+
+    it('should generate event infos with single event', async () => {
+      const mockResponse = {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              events: [
+                {
+                  title: '수강신청',
+                  description: '봄학기 수강신청',
+                  startDate: '2025-11-01',
+                  endDate: '2025-11-03',
+                },
+              ],
+            }),
+          },
+        }],
+      };
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await generateEventInfos(mockEnv, mockItem);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        title: '수강신청',
+        description: '봄학기 수강신청',
+        startDate: '2025-11-01',
+        endDate: '2025-11-03',
+        startTime: undefined,
+        endTime: undefined,
+      });
+    });
+
+    it('should generate event infos with multiple events', async () => {
+      const mockResponse = {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              events: [
+                {
+                  title: '행사 1',
+                  description: '설명 1',
+                  startDate: '2025-11-01',
+                  endDate: '2025-11-01',
+                },
+                {
+                  title: '행사 2',
+                  description: '설명 2',
+                  startDate: '2025-11-10',
+                  endDate: '2025-11-12',
+                  startTime: '09:00',
+                  endTime: '17:00',
+                },
+              ],
+            }),
+          },
+        }],
+      };
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await generateEventInfos(mockEnv, mockItem);
+
+      expect(result).toHaveLength(2);
+      expect(result[1].startTime).toBe('09:00');
+      expect(result[1].endTime).toBe('17:00');
+    });
+
+    it('should use pubDate as fallback when startDate not provided', async () => {
+      const mockResponse = {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              events: [
+                {
+                  title: '행사',
+                  description: '설명',
+                  // No startDate provided
+                },
+              ],
+            }),
+          },
+        }],
+      };
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await generateEventInfos(mockEnv, mockItem);
+
+      expect(result[0].startDate).toBe(mockItem.pubDate);
+      expect(result[0].endDate).toBe(mockItem.pubDate);
+    });
+
+    it('should filter out events without title or description', async () => {
+      const mockResponse = {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              events: [
+                {
+                  title: '유효한 행사',
+                  description: '설명',
+                  startDate: '2025-11-01',
+                },
+                {
+                  // Missing title gets filled with fallback
+                  description: '설명만 있음',
+                  startDate: '2025-11-02',
+                },
+                {
+                  title: '제목만 있음',
+                  // Missing description gets filled with fallback
+                  startDate: '2025-11-03',
+                },
+              ],
+            }),
+          },
+        }],
+      };
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await generateEventInfos(mockEnv, mockItem);
+
+      // All 3 events pass filtering since title and description are filled with fallback
+      expect(result).toHaveLength(3);
+      expect(result[0].title).toBe('유효한 행사');
+      expect(result[1].title).toBe('제목 없음'); // Fallback title
+      expect(result[2].description).toBe('설명 없음'); // Fallback description
+    });
+
+    it('should return fallback event on API error', async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve('Internal Server Error'),
+      });
+
+      // Mock fallback to direct OpenAI also failing
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve('Direct OpenAI also failed'),
+      });
+
+      const result = await generateEventInfos(mockEnv, mockItem);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe('제목 없음'); // Actual fallback value
+      expect(result[0].description).toBe('설명 없음'); // Actual fallback value
+    });
+
+    it('should handle malformed JSON response and return fallback', async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{
+            message: {
+              content: 'invalid json',
+            },
+          }],
+        }),
+      });
+
+      const result = await generateEventInfos(mockEnv, mockItem);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe('제목 없음'); // Actual fallback value
+      expect(result[0].description).toBe('설명 없음'); // Actual fallback value
+    });
+
+    it('should handle missing events array and treat as single event', async () => {
+      const mockResponse = {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              title: '단일 행사',
+              description: '배열이 아닌 단일 객체',
+              startDate: '2025-11-15',
+              endDate: '2025-11-15',
+            }),
+          },
+        }],
+      };
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await generateEventInfos(mockEnv, mockItem);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe('단일 행사');
+    });
+
+    it('should request with correct prompt structure', async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                events: [{
+                  title: 'test',
+                  description: 'test',
+                }],
+              }),
+            },
+          }],
+        }),
+      });
+
+      await generateEventInfos(mockEnv, mockItem);
+
+      const callArgs = fetchMock.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(body.model).toBe(mockEnv.OPENAI_CONTENT_MODEL);
+      expect(body.response_format.type).toBe('json_object');
+      expect(body.messages[1].content).toContain(mockItem.title);
+      expect(body.messages[1].content).toContain(mockItem.pubDate);
     });
   });
 });

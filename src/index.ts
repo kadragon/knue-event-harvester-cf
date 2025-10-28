@@ -26,6 +26,7 @@ import type {
   RssItem,
   AiSummary,
 } from "./types";
+import { deduplicateLinks, buildAttachmentFromFile } from "./lib/utils";
 
 interface Env extends StateEnv, CalendarEnv, AiEnv {
   OPENAI_API_KEY: string;
@@ -54,7 +55,7 @@ async function fetchRssFeed(): Promise<string> {
   return response.text();
 }
 
-function normalizeDate(pubDate: string): string {
+export function normalizeDate(pubDate: string): string {
   if (!pubDate) {
     const today = new Date();
     return today.toISOString().slice(0, 10);
@@ -72,7 +73,7 @@ function normalizeDate(pubDate: string): string {
  * Check if pubDate is within the last 7 days from today
  * Returns true if the item should be processed, false if it's too old
  */
-function isWithinLastWeek(pubDate: string): boolean {
+export function isWithinLastWeek(pubDate: string): boolean {
   if (!pubDate) return true; // Process if no pubDate available
 
   try {
@@ -96,11 +97,9 @@ function isWithinLastWeek(pubDate: string): boolean {
   }
 }
 
-function buildDescription(
+export function buildDescription(
   item: RssItem,
-  summary: AiSummary,
-  htmlDescription: string,
-  attachmentText: string
+  summary: AiSummary
 ): string {
   const parts: string[] = [];
   parts.push(summary.summary);
@@ -117,20 +116,16 @@ function buildDescription(
     );
   }
   if (summary.links.length > 0 || item.link) {
-    const linkLines = [...summary.links];
-    if (item.link) linkLines.unshift(item.link);
+    // AC-1: 링크 중복 제거 (원문 링크를 우선순위로)
+    const uniqueLinks = deduplicateLinks(item.link, summary.links);
     parts.push(
-      "관련 링크:\n" + linkLines.map((link) => `- ${link}`).join("\n")
+      "관련 링크:\n" + uniqueLinks.map((link) => `- ${link}`).join("\n")
     );
-  }
-  if (attachmentText) parts.push(attachmentText);
-  if (htmlDescription) {
-    parts.push("원문 본문:\n" + htmlDescription);
   }
   return parts.join("\n\n");
 }
 
-async function processNewItem(
+export async function processNewItem(
   env: Env,
   item: RssItem,
   accessToken: string,
@@ -160,16 +155,8 @@ async function processNewItem(
         endTime: eventInput.startTime,
       };
     }
-    const description = buildDescription(
-      item,
-      summary,
-      item.descriptionHtml,
-      item.attachment
-        ? item.attachment.filename
-          ? `첨부파일: ${item.attachment.filename}`
-          : ""
-        : ""
-    );
+    // AC-2, AC-3: 원본 본문과 첨부파일 정보 제거
+    const description = buildDescription(item, summary);
     eventInput.description = description;
 
     const hash = await computeHash(eventInput);
@@ -198,9 +185,11 @@ async function processNewItem(
       continue;
     }
 
+    // AC-4, AC-5: 첨부파일 처리
+    const attachments = buildAttachmentFromFile(item);
     const created = await createEvent(env, accessToken, eventInput, meta, {
       summaryHash: hash,
-    });
+    }, attachments ? [attachments] : undefined);
     await putProcessedRecord(env, item.id, {
       ...meta,
       eventId: created.id,

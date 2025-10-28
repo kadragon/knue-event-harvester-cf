@@ -1,4 +1,4 @@
-import type { CalendarEventInput, ProcessedRecord } from "../types";
+import type { CalendarEventInput, ProcessedRecord, GoogleCalendarAttachment } from "../types";
 
 interface ServiceAccount {
   client_email: string;
@@ -23,6 +23,11 @@ export interface GoogleCalendarEvent {
   description?: string;
   start?: { date?: string; dateTime?: string };
   end?: { date?: string; dateTime?: string };
+  attachments?: Array<{
+    fileUrl: string;
+    mimeType: string;
+    title?: string;
+  }>;
   extendedProperties?: {
     private?: Record<string, string>;
   };
@@ -188,6 +193,7 @@ export async function createEvent(
   input: CalendarEventInput,
   meta: ProcessedRecord,
   descriptionExtras?: Record<string, unknown>,
+  attachments?: GoogleCalendarAttachment[],
 ): Promise<GoogleCalendarEvent> {
   const startDate = input.startDate;
   const endDate = input.endDate;
@@ -208,7 +214,7 @@ export async function createEvent(
     end = { date: endDateExclusive };
   }
 
-  const body = {
+  const body: Record<string, unknown> = {
     summary: input.title,
     description: input.description,
     start,
@@ -227,17 +233,27 @@ export async function createEvent(
     },
   };
 
-  const response = await fetch(
+  // AC-4, AC-5: Google Calendar attachments 추가
+  if (attachments && attachments.length > 0) {
+    body.attachments = attachments;
+  }
+
+  // Google Calendar API requires supportsAttachments=true when attachments are present
+  const url = new URL(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(env.GOOGLE_CALENDAR_ID)}/events`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    },
   );
+  if (attachments && attachments.length > 0) {
+    url.searchParams.set("supportsAttachments", "true");
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
 
   if (!response.ok) {
     const errorText = await response.text();

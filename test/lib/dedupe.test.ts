@@ -6,7 +6,7 @@ import {
   getEventTimeRange,
   getInputTimeRange,
   timeRangesOverlap,
-} from "../src/lib/dedupe";
+} from "../../src/lib/dedupe";
 
 const existing = [
   {
