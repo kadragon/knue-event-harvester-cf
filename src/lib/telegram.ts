@@ -102,28 +102,11 @@ function formatMessage(payload: TelegramNotificationPayload): string {
 }
 
 /**
- * Escape special markdown characters
+ * Escape special markdown characters for MarkdownV2
+ * Uses single regex for better performance
  */
 function escapeMarkdown(text: string): string {
-  return text
-    .replace(/\*/g, '\\*')
-    .replace(/_/g, '\\_')
-    .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
-    .replace(/~/g, '\\~')
-    .replace(/`/g, '\\`')
-    .replace(/>/g, '\\>')
-    .replace(/#/g, '\\#')
-    .replace(/\+/g, '\\+')
-    .replace(/\-/g, '\\-')
-    .replace(/\=/g, '\\=')
-    .replace(/\|/g, '\\|')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}')
-    .replace(/\./g, '\\.')
-    .replace(/!/g, '\\!');
+  return text.replace(/[_*[\].()~`>#+\-=|{}.!]/g, '\\$&');
 }
 
 /**
