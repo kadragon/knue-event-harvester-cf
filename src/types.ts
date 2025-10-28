@@ -57,3 +57,9 @@ export interface GoogleCalendarAttachment {
   mimeType: string;
   title: string;
 }
+
+export interface TelegramNotificationPayload {
+  eventTitle: string;
+  rssUrl: string; // Original article URL
+  eventUrl: string; // Google Calendar event URL
+}

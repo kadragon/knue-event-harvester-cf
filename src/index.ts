@@ -11,6 +11,7 @@ import {
   type GoogleCalendarEvent,
 } from "./lib/calendar";
 import { isDuplicate, computeHash } from "./lib/dedupe";
+import { sendNotification } from "./lib/telegram";
 
 import { parseRss } from "./lib/rss";
 import {
@@ -39,9 +40,19 @@ interface Env extends StateEnv, CalendarEnv, AiEnv {
   LOOKBACK_DAYS?: string;
   GOOGLE_CALENDAR_ID: string;
   GOOGLE_SERVICE_ACCOUNT_JSON: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_USER_ID?: string;
 }
 
 const RSS_URL = "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28";
+
+/**
+ * Build Google Calendar event URL
+ * Format: https://calendar.google.com/calendar/u/0/r/eventedit/{eventId}
+ */
+function buildCalendarEventUrl(eventId: string): string {
+  return `https://calendar.google.com/calendar/u/0/r/eventedit/${eventId}`;
+}
 
 async function fetchRssFeed(): Promise<string> {
   const response = await fetch(RSS_URL, {
@@ -196,6 +207,16 @@ export async function processNewItem(
     });
     existingEvents.push(created);
     createdEvents.push(created);
+
+    // Send Telegram notification (fire-and-forget, errors handled internally)
+    await sendNotification(
+      {
+        eventTitle: eventInput.title,
+        rssUrl: item.link,
+        eventUrl: buildCalendarEventUrl(created.id),
+      },
+      env
+    );
   }
 
   // 의미있는 일정이 없었을 때 상태 저장 (한 번 시도 후 더 이상 재시도하지 않음)
