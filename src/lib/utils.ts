@@ -1,4 +1,4 @@
-import type { RssItem } from '../types';
+import type { RssItem, GoogleCalendarAttachment } from '../types';
 
 /**
  * URL 정규화: scheme + host + pathname 기준으로 URL 비교
@@ -106,15 +106,6 @@ function getMimeType(filename: string | undefined): string {
 
   // 기타
   return 'application/octet-stream';
-}
-
-/**
- * Google Calendar Attachment 인터페이스
- */
-export interface GoogleCalendarAttachment {
-  fileUrl: string;
-  mimeType: string;
-  title: string;
 }
 
 /**

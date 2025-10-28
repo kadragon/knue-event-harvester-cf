@@ -227,5 +227,158 @@ describe('Calendar Module', () => {
       await expect(createEvent(mockEnv, 'test-token', input, meta))
         .rejects.toThrow('Google Calendar create error 409');
     });
+
+    it('AC-1: should include single attachment in request body with supportsAttachments query param', async () => {
+      const mockEvent: GoogleCalendarEvent = { id: 'new-event-id' };
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockEvent),
+      });
+
+      const input: CalendarEventInput = {
+        title: 'Test Event',
+        description: 'Test Description',
+        startDate: '2023-01-01',
+        endDate: '2023-01-01',
+      };
+
+      const meta: ProcessedRecord = {
+        eventId: 'test-event-id',
+        nttNo: '123',
+        processedAt: '2023-01-01T00:00:00Z',
+        hash: 'test-hash',
+      };
+
+      const attachments = [
+        {
+          fileUrl: 'https://example.com/file.pdf',
+          mimeType: 'application/pdf',
+          title: 'Test PDF',
+        },
+      ];
+
+      await createEvent(mockEnv, 'test-token', input, meta, undefined, attachments);
+
+      const callArgs = fetchMock.mock.calls[0];
+      const url = callArgs[0] as string;
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(url).toContain('supportsAttachments=true');
+      expect(body.attachments).toBeDefined();
+      expect(body.attachments).toEqual(attachments);
+      expect(body.attachments).toHaveLength(1);
+    });
+
+    it('AC-2: should not include attachments field when undefined and no supportsAttachments param', async () => {
+      const mockEvent: GoogleCalendarEvent = { id: 'new-event-id' };
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockEvent),
+      });
+
+      const input: CalendarEventInput = {
+        title: 'Test Event',
+        description: 'Test Description',
+        startDate: '2023-01-01',
+        endDate: '2023-01-01',
+      };
+
+      const meta: ProcessedRecord = {
+        eventId: 'test-event-id',
+        nttNo: '123',
+        processedAt: '2023-01-01T00:00:00Z',
+        hash: 'test-hash',
+      };
+
+      await createEvent(mockEnv, 'test-token', input, meta);
+
+      const callArgs = fetchMock.mock.calls[0];
+      const url = callArgs[0] as string;
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(url).not.toContain('supportsAttachments');
+      expect(body.attachments).toBeUndefined();
+    });
+
+    it('AC-3: should not include attachments field when empty array and no supportsAttachments param', async () => {
+      const mockEvent: GoogleCalendarEvent = { id: 'new-event-id' };
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockEvent),
+      });
+
+      const input: CalendarEventInput = {
+        title: 'Test Event',
+        description: 'Test Description',
+        startDate: '2023-01-01',
+        endDate: '2023-01-01',
+      };
+
+      const meta: ProcessedRecord = {
+        eventId: 'test-event-id',
+        nttNo: '123',
+        processedAt: '2023-01-01T00:00:00Z',
+        hash: 'test-hash',
+      };
+
+      await createEvent(mockEnv, 'test-token', input, meta, undefined, []);
+
+      const callArgs = fetchMock.mock.calls[0];
+      const url = callArgs[0] as string;
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(url).not.toContain('supportsAttachments');
+      expect(body.attachments).toBeUndefined();
+    });
+
+    it('AC-4: should include multiple attachments in request body with supportsAttachments query param', async () => {
+      const mockEvent: GoogleCalendarEvent = { id: 'new-event-id' };
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockEvent),
+      });
+
+      const input: CalendarEventInput = {
+        title: 'Test Event',
+        description: 'Test Description',
+        startDate: '2023-01-01',
+        endDate: '2023-01-01',
+      };
+
+      const meta: ProcessedRecord = {
+        eventId: 'test-event-id',
+        nttNo: '123',
+        processedAt: '2023-01-01T00:00:00Z',
+        hash: 'test-hash',
+      };
+
+      const attachments = [
+        {
+          fileUrl: 'https://example.com/file1.pdf',
+          mimeType: 'application/pdf',
+          title: 'PDF File',
+        },
+        {
+          fileUrl: 'https://example.com/file2.doc',
+          mimeType: 'application/msword',
+          title: 'Word File',
+        },
+      ];
+
+      await createEvent(mockEnv, 'test-token', input, meta, undefined, attachments);
+
+      const callArgs = fetchMock.mock.calls[0];
+      const url = callArgs[0] as string;
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(url).toContain('supportsAttachments=true');
+      expect(body.attachments).toBeDefined();
+      expect(body.attachments).toEqual(attachments);
+      expect(body.attachments).toHaveLength(2);
+    });
   });
 });

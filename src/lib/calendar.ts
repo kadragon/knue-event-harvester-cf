@@ -238,17 +238,22 @@ export async function createEvent(
     body.attachments = attachments;
   }
 
-  const response = await fetch(
+  // Google Calendar API requires supportsAttachments=true when attachments are present
+  const url = new URL(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(env.GOOGLE_CALENDAR_ID)}/events`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    },
   );
+  if (attachments && attachments.length > 0) {
+    url.searchParams.set("supportsAttachments", "true");
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
 
   if (!response.ok) {
     const errorText = await response.text();
