@@ -26,6 +26,7 @@ import type {
   RssItem,
   AiSummary,
 } from "./types";
+import { deduplicateLinks } from "./lib/utils";
 
 interface Env extends StateEnv, CalendarEnv, AiEnv {
   OPENAI_API_KEY: string;
@@ -117,10 +118,10 @@ function buildDescription(
     );
   }
   if (summary.links.length > 0 || item.link) {
-    const linkLines = [...summary.links];
-    if (item.link) linkLines.unshift(item.link);
+    // AC-1: 링크 중복 제거 (원문 링크를 우선순위로)
+    const uniqueLinks = deduplicateLinks(item.link, summary.links);
     parts.push(
-      "관련 링크:\n" + linkLines.map((link) => `- ${link}`).join("\n")
+      "관련 링크:\n" + uniqueLinks.map((link) => `- ${link}`).join("\n")
     );
   }
   if (attachmentText) parts.push(attachmentText);

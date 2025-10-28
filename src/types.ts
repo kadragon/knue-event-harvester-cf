@@ -51,3 +51,9 @@ export interface ProcessedRecord {
   processedAt: string;
   hash: string;
 }
+
+export interface GoogleCalendarAttachment {
+  fileUrl: string;
+  mimeType: string;
+  title: string;
+}
