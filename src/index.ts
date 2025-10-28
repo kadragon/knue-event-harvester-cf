@@ -208,19 +208,15 @@ export async function processNewItem(
     existingEvents.push(created);
     createdEvents.push(created);
 
-    // Send Telegram notification (fire-and-forget)
-    try {
-      await sendNotification(
-        {
-          eventTitle: eventInput.title,
-          rssUrl: item.link,
-          eventUrl: buildCalendarEventUrl(created.id),
-        },
-        env
-      );
-    } catch (error) {
-      console.error("[index] Failed to send Telegram notification:", error);
-    }
+    // Send Telegram notification (fire-and-forget, errors handled internally)
+    await sendNotification(
+      {
+        eventTitle: eventInput.title,
+        rssUrl: item.link,
+        eventUrl: buildCalendarEventUrl(created.id),
+      },
+      env
+    );
   }
 
   // 의미있는 일정이 없었을 때 상태 저장 (한 번 시도 후 더 이상 재시도하지 않음)
