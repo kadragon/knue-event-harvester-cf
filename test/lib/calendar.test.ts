@@ -5,8 +5,8 @@ import {
   createEvent,
   type CalendarEnv,
   type GoogleCalendarEvent,
-} from '../src/lib/calendar';
-import type { CalendarEventInput, ProcessedRecord } from '../src/types';
+} from '../../src/lib/calendar';
+import type { CalendarEventInput, ProcessedRecord } from '../../src/types';
 
 // Mock fetch globally
 const fetchMock = vi.fn();

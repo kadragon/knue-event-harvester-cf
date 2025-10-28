@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getProcessedRecord, putProcessedRecord, getMaxProcessedId, updateMaxProcessedId, type StateEnv } from '../src/lib/state';
-import type { ProcessedRecord } from '../src/types';
+import { getProcessedRecord, putProcessedRecord, getMaxProcessedId, updateMaxProcessedId, type StateEnv } from '../../src/lib/state';
+import type { ProcessedRecord } from '../../src/types';
 
 // Mock KV namespace
 const mockKV = {

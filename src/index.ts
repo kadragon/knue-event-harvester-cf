@@ -55,7 +55,7 @@ async function fetchRssFeed(): Promise<string> {
   return response.text();
 }
 
-function normalizeDate(pubDate: string): string {
+export function normalizeDate(pubDate: string): string {
   if (!pubDate) {
     const today = new Date();
     return today.toISOString().slice(0, 10);
@@ -73,7 +73,7 @@ function normalizeDate(pubDate: string): string {
  * Check if pubDate is within the last 7 days from today
  * Returns true if the item should be processed, false if it's too old
  */
-function isWithinLastWeek(pubDate: string): boolean {
+export function isWithinLastWeek(pubDate: string): boolean {
   if (!pubDate) return true; // Process if no pubDate available
 
   try {
@@ -97,7 +97,7 @@ function isWithinLastWeek(pubDate: string): boolean {
   }
 }
 
-function buildDescription(
+export function buildDescription(
   item: RssItem,
   summary: AiSummary
 ): string {
@@ -125,7 +125,7 @@ function buildDescription(
   return parts.join("\n\n");
 }
 
-async function processNewItem(
+export async function processNewItem(
   env: Env,
   item: RssItem,
   accessToken: string,
