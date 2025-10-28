@@ -21,7 +21,7 @@
 | Case | Current Behavior | Expected Behavior |
 |---|---|---|
 | Link Preview | Shows link preview in Telegram | No link preview |
-| Calendar URL | `eventedit/{id}` (broken) | Use `htmlLink` from API OR `event?eid={base64(id + " " + calendarId)}` |
+| Calendar URL | `eventedit/{id}` (broken) | Use `htmlLink` from API OR `event?eid={base64url(id + " " + calendarId)}` |
 | Link Text (RSS) | `[www.knue.ac.kr](url)` | `[바로가기](url)` |
 | Link Text (Calendar) | `[Google Calendar](url)` | `[바로가기](url)` |
 
