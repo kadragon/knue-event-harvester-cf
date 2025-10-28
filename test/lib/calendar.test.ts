@@ -132,6 +132,7 @@ describe('Calendar Module', () => {
     it('should create event successfully', async () => {
       const mockEvent: GoogleCalendarEvent = {
         id: 'new-event-id',
+        htmlLink: 'https://www.google.com/calendar/event?eid=bmV3LWV2ZW50LWlkIHRlc3QtY2FsZW5kYXItaWQ',
         summary: 'Test Event',
         description: 'Test Description',
         start: { date: '2023-01-01' },

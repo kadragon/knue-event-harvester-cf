@@ -19,6 +19,7 @@ export interface CalendarEnv {
 
 export interface GoogleCalendarEvent {
   id: string;
+  htmlLink?: string; // Absolute link to this event in Google Calendar Web UI
   summary?: string;
   description?: string;
   start?: { date?: string; dateTime?: string };

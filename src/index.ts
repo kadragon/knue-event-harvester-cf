@@ -47,12 +47,18 @@ interface Env extends StateEnv, CalendarEnv, AiEnv {
 const RSS_URL = "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28";
 
 /**
- * Build Google Calendar event URL
- * Format: https://calendar.google.com/calendar/u/0/r/event?eid={eventId}
+ * Build Google Calendar event URL with proper eid encoding
+ * Format: https://calendar.google.com/calendar/u/0/r/event?eid={base64url(eventId + " " + calendarId)}
  * Trace: SPEC-TELEGRAM-IMPROVEMENTS-001, AC-2
  */
-function buildCalendarEventUrl(eventId: string): string {
-  return `https://calendar.google.com/calendar/u/0/r/event?eid=${eventId}`;
+function buildCalendarEventUrl(eventId: string, calendarId: string): string {
+  // eid format: Base64URL(eventId + " " + calendarId)
+  const eidRaw = `${eventId} ${calendarId}`;
+  const eidEncoded = btoa(eidRaw)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+  return `https://calendar.google.com/calendar/u/0/r/event?eid=${eidEncoded}`;
 }
 
 async function fetchRssFeed(): Promise<string> {
@@ -210,11 +216,13 @@ export async function processNewItem(
     createdEvents.push(created);
 
     // Send Telegram notification (fire-and-forget, errors handled internally)
+    // Prefer htmlLink from API, fallback to building URL with proper eid encoding
+    const calendarUrl = created.htmlLink ?? buildCalendarEventUrl(created.id, env.GOOGLE_CALENDAR_ID);
     await sendNotification(
       {
         eventTitle: eventInput.title,
         rssUrl: item.link,
-        eventUrl: buildCalendarEventUrl(created.id),
+        eventUrl: calendarUrl,
       },
       env
     );
