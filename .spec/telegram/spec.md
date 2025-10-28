@@ -99,15 +99,15 @@ No persistent state needed. Telegram Bot API handles deduplication server-side.
 // In src/index.ts, after createEvent() success:
 const event = await createEvent(eventInput, env);
 await sendNotification({
-  eventTitle: eventInput.summary,
+  eventTitle: eventInput.title,
   rssUrl: item.link,         // Original RSS article URL
-  eventUrl: buildCalendarUrl(event.id)
+  eventUrl: buildCalendarEventUrl(event.id)
 }, env);
 ```
 
 Helper function:
 ```typescript
-function buildCalendarUrl(eventId: string): string {
+function buildCalendarEventUrl(eventId: string): string {
   return `https://calendar.google.com/calendar/u/0/r/eventedit/${eventId}`;
 }
 ```
