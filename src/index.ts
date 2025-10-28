@@ -26,7 +26,7 @@ import type {
   RssItem,
   AiSummary,
 } from "./types";
-import { deduplicateLinks } from "./lib/utils";
+import { deduplicateLinks, buildAttachmentFromFile } from "./lib/utils";
 
 interface Env extends StateEnv, CalendarEnv, AiEnv {
   OPENAI_API_KEY: string;
@@ -185,9 +185,11 @@ async function processNewItem(
       continue;
     }
 
+    // AC-4, AC-5: 첨부파일 처리
+    const attachments = buildAttachmentFromFile(item);
     const created = await createEvent(env, accessToken, eventInput, meta, {
       summaryHash: hash,
-    });
+    }, attachments ? [attachments] : undefined);
     await putProcessedRecord(env, item.id, {
       ...meta,
       eventId: created.id,

@@ -1,4 +1,4 @@
-import type { CalendarEventInput, ProcessedRecord } from "../types";
+import type { CalendarEventInput, ProcessedRecord, GoogleCalendarAttachment } from "../types";
 
 interface ServiceAccount {
   client_email: string;
@@ -23,6 +23,11 @@ export interface GoogleCalendarEvent {
   description?: string;
   start?: { date?: string; dateTime?: string };
   end?: { date?: string; dateTime?: string };
+  attachments?: Array<{
+    fileUrl: string;
+    mimeType: string;
+    title?: string;
+  }>;
   extendedProperties?: {
     private?: Record<string, string>;
   };
@@ -188,6 +193,7 @@ export async function createEvent(
   input: CalendarEventInput,
   meta: ProcessedRecord,
   descriptionExtras?: Record<string, unknown>,
+  attachments?: GoogleCalendarAttachment[],
 ): Promise<GoogleCalendarEvent> {
   const startDate = input.startDate;
   const endDate = input.endDate;
@@ -208,7 +214,7 @@ export async function createEvent(
     end = { date: endDateExclusive };
   }
 
-  const body = {
+  const body: Record<string, unknown> = {
     summary: input.title,
     description: input.description,
     start,
@@ -226,6 +232,11 @@ export async function createEvent(
       },
     },
   };
+
+  // AC-4, AC-5: Google Calendar attachments 추가
+  if (attachments && attachments.length > 0) {
+    body.attachments = attachments;
+  }
 
   const response = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(env.GOOGLE_CALENDAR_ID)}/events`,
