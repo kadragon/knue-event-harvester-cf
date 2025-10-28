@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { sendNotification } from '../../src/lib/telegram';
 import { TelegramNotificationPayload } from '../../src/types';
 
-// Trace: SPEC-TELEGRAM-NOTIFICATION-001
+// Trace: SPEC-TELEGRAM-NOTIFICATION-001, SPEC-TELEGRAM-IMPROVEMENTS-001
 
 describe('telegram', () => {
   let mockFetch: any;
@@ -172,6 +172,51 @@ describe('telegram', () => {
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.text).toContain('https://knue.ac.kr/rssBbsNtt.do?nttNo=123');
       expect(mockFetch).toHaveBeenCalledOnce();
+    });
+
+    // SPEC-TELEGRAM-IMPROVEMENTS-001 tests
+    // AC-1: Link preview disabled
+    it('IMPROVEMENTS-AC-1: Should disable web page preview in Telegram message', async () => {
+      const payload: TelegramNotificationPayload = {
+        eventTitle: 'Test Event',
+        rssUrl: 'https://knue.ac.kr/rssBbsNtt.do?nttNo=123',
+        eventUrl: 'https://calendar.google.com/calendar/u/0/r/event?eid=abc123',
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
+
+      await sendNotification(payload, env);
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.disable_web_page_preview).toBe(true);
+    });
+
+    // AC-3: Link text should be [바로가기]
+    it('IMPROVEMENTS-AC-3: Should format links with [바로가기] text instead of URL or domain', async () => {
+      const payload: TelegramNotificationPayload = {
+        eventTitle: 'Test Event',
+        rssUrl: 'https://knue.ac.kr/rssBbsNtt.do?nttNo=123',
+        eventUrl: 'https://calendar.google.com/calendar/u/0/r/event?eid=abc123',
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
+
+      await sendNotification(payload, env);
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const message = body.text;
+
+      // Should contain [바로가기] as link text
+      expect(message).toContain('[바로가기]');
+      // Should NOT contain domain name as link text
+      expect(message).not.toContain('[knue\\.ac\\.kr]');
+      expect(message).not.toContain('[Google Calendar]');
     });
   });
 });

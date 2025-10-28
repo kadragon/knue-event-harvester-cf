@@ -42,6 +42,7 @@ export async function sendNotification(
     const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
 
     // Send message via Telegram Bot API
+    // Trace: SPEC-TELEGRAM-IMPROVEMENTS-001, AC-1 (disable_web_page_preview)
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -51,6 +52,7 @@ export async function sendNotification(
         chat_id: userId,
         text: message,
         parse_mode: 'MarkdownV2',
+        disable_web_page_preview: true,
       }),
     });
 
@@ -74,6 +76,7 @@ export async function sendNotification(
 /**
  * Format notification message with emoji and markdown
  * AC-4: Include event title, RSS link, and calendar link
+ * Trace: SPEC-TELEGRAM-IMPROVEMENTS-001, AC-3
  */
 function formatMessage(payload: TelegramNotificationPayload): string {
   const { eventTitle, rssUrl, eventUrl } = payload;
@@ -89,14 +92,14 @@ function formatMessage(payload: TelegramNotificationPayload): string {
     lines.push('');
   }
 
-  // Add RSS link
+  // Add RSS link with [바로가기] text
   lines.push(`🔗 *원문 링크:*`);
-  lines.push(`[${escapeMarkdown(extractDomain(rssUrl))}](${rssUrl})`);
+  lines.push(`[바로가기](${rssUrl})`);
   lines.push('');
 
-  // Add calendar link
+  // Add calendar link with [바로가기] text
   lines.push(`📅 *캘린더 링크:*`);
-  lines.push(`[Google Calendar](${eventUrl})`);
+  lines.push(`[바로가기](${eventUrl})`);
 
   return lines.join('\n');
 }
@@ -107,16 +110,4 @@ function formatMessage(payload: TelegramNotificationPayload): string {
  */
 function escapeMarkdown(text: string): string {
   return text.replace(/[_*[\].()~`>#+\-=|{}.!]/g, '\\$&');
-}
-
-/**
- * Extract domain from URL for display
- */
-function extractDomain(url: string): string {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
-  } catch {
-    return url;
-  }
 }
