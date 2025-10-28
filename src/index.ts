@@ -48,10 +48,11 @@ const RSS_URL = "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28";
 
 /**
  * Build Google Calendar event URL
- * Format: https://calendar.google.com/calendar/u/0/r/eventedit/{eventId}
+ * Format: https://calendar.google.com/calendar/u/0/r/event?eid={eventId}
+ * Trace: SPEC-TELEGRAM-IMPROVEMENTS-001, AC-2
  */
 function buildCalendarEventUrl(eventId: string): string {
-  return `https://calendar.google.com/calendar/u/0/r/eventedit/${eventId}`;
+  return `https://calendar.google.com/calendar/u/0/r/event?eid=${eventId}`;
 }
 
 async function fetchRssFeed(): Promise<string> {
