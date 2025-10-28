@@ -33,8 +33,8 @@
 
 | Case | Title | RSS Link | Calendar Link | Expected Output |
 |------|-------|----------|---|---|
-| Success | "KNUE 개교기념일" | "https://knue.ac.kr/rssBbsNtt.do?nttNo=123" | "https://calendar.google.com/calendar/u/0?cid=abc@google.com" | Message with all 3 fields |
-| Empty title | "" | "https://knue.ac.kr/rssBbsNtt.do?nttNo=123" | "https://calendar.google.com/calendar/u/0?cid=abc@google.com" | Message with 2 fields (title omitted) |
+| Success | "KNUE 개교기념일" | "https://knue.ac.kr/rssBbsNtt.do?nttNo=123" | "https://calendar.google.com/calendar/u/0/r/eventedit/{eventId}" | Message with all 3 fields |
+| Empty title | "" | "https://knue.ac.kr/rssBbsNtt.do?nttNo=123" | "https://calendar.google.com/calendar/u/0/r/eventedit/{eventId}" | Message with 2 fields (title omitted) |
 
 ---
 
