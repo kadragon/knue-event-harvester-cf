@@ -99,9 +99,7 @@ function isWithinLastWeek(pubDate: string): boolean {
 
 function buildDescription(
   item: RssItem,
-  summary: AiSummary,
-  htmlDescription: string,
-  attachmentText: string
+  summary: AiSummary
 ): string {
   const parts: string[] = [];
   parts.push(summary.summary);
@@ -123,10 +121,6 @@ function buildDescription(
     parts.push(
       "관련 링크:\n" + uniqueLinks.map((link) => `- ${link}`).join("\n")
     );
-  }
-  if (attachmentText) parts.push(attachmentText);
-  if (htmlDescription) {
-    parts.push("원문 본문:\n" + htmlDescription);
   }
   return parts.join("\n\n");
 }
@@ -161,16 +155,8 @@ async function processNewItem(
         endTime: eventInput.startTime,
       };
     }
-    const description = buildDescription(
-      item,
-      summary,
-      item.descriptionHtml,
-      item.attachment
-        ? item.attachment.filename
-          ? `첨부파일: ${item.attachment.filename}`
-          : ""
-        : ""
-    );
+    // AC-2, AC-3: 원본 본문과 첨부파일 정보 제거
+    const description = buildDescription(item, summary);
     eventInput.description = description;
 
     const hash = await computeHash(eventInput);
