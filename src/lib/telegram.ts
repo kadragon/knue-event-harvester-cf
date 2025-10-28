@@ -50,7 +50,7 @@ export async function sendNotification(
       body: JSON.stringify({
         chat_id: userId,
         text: message,
-        parse_mode: 'Markdown',
+        parse_mode: 'MarkdownV2',
       }),
     });
 
