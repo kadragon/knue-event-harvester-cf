@@ -94,12 +94,12 @@ function formatMessage(payload: TelegramNotificationPayload): string {
 
   // Add RSS link with [바로가기] text
   lines.push(`🔗 *원문 링크:*`);
-  lines.push(`[바로가기](${rssUrl})`);
+  lines.push(`[바로가기](${escapeMarkdown(rssUrl)})`);
   lines.push('');
 
   // Add calendar link with [바로가기] text
   lines.push(`📅 *캘린더 링크:*`);
-  lines.push(`[바로가기](${eventUrl})`);
+  lines.push(`[바로가기](${escapeMarkdown(eventUrl)})`);
 
   return lines.join('\n');
 }
