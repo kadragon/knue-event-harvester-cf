@@ -197,6 +197,18 @@ describe('HTML Module', () => {
         const html = '<p>Before</p><script type="text/javascript" src="evil.js">alert("xss")</script ><p>After</p>';
         expect(htmlToText(html)).toBe('Before\nAfter');
       });
+
+      it('should handle nested/malformed tags (CodeQL case)', () => {
+        // Tests for incomplete multi-character sanitization vulnerability
+        // Iterative removal handles cases like <<div>text</div>>
+        const html = '<p>Text</p><<div>nested</div>><p>More</p>';
+        expect(htmlToText(html)).toBe('Text\nnested\nMore');
+      });
+
+      it('should handle self-closing malformed tags', () => {
+        const html = '<p>Start</p><<img src="x"/><p>End</p>';
+        expect(htmlToText(html)).toBe('Start\nEnd');
+      });
     });
   });
 });

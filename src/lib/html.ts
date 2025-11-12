@@ -90,8 +90,18 @@ export function htmlToText(html: string): string {
     .replace(/<\s*br\s*\/?\s*>/gi, "\n")
     .replace(/<\/(p|div|li)>/gi, "\n")
     .replace(/<li[^>]*>/gi, "- ")
-    .replace(/<[^>]+>/g, "")
     .replace(/\r/g, "");
+
+  // Remove remaining HTML tags iteratively to handle nested/malformed cases
+  // e.g., "<<tag>malicious>" -> "<malicious>" -> ""
+  let prevLength = 0;
+  while (normalized.length !== prevLength) {
+    prevLength = normalized.length;
+    normalized = normalized.replace(/<[^>]+>/g, "");
+  }
+
+  // Clean up any remaining < or > characters (from malformed HTML)
+  normalized = normalized.replace(/[<>]/g, "");
 
   const decoded = decodeEntities(normalized);
   return decoded
