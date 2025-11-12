@@ -227,6 +227,17 @@ export async function processNewItem(
     // Split long events (>3 days) into two separate events
     const eventsToCreate = splitLongEvent(eventInput);
 
+    // Prepare and validate all split events before creating any
+    // This ensures atomicity: either all parts are created or none
+    type PreparedEvent = {
+      input: CalendarEventInput;
+      hash: string;
+      meta: ProcessedRecord;
+    };
+
+    const preparedEvents: PreparedEvent[] = [];
+    let hasDuplicate = false;
+
     for (const splitEvent of eventsToCreate) {
       const hash = await computeHash(splitEvent);
       const meta: ProcessedRecord = {
@@ -240,29 +251,51 @@ export async function processNewItem(
         threshold: similarityThreshold,
         meta,
       });
+
       if (duplicate) {
         console.log(
           `Duplicate detected for ${item.id} event: ${splitEvent.title}`
         );
-        // 중복 감지 시에도 상태 저장 (다시 처리하지 않도록)
-        await putProcessedRecord(env, item.id, {
-          eventId: "duplicate-skip",
-          nttNo: item.id,
-          processedAt: new Date().toISOString(),
-          hash,
-        });
-        continue;
+        hasDuplicate = true;
+        break; // Stop checking if any part is duplicate
       }
 
-      // AC-4, AC-5: 첨부파일 처리
-      const attachments = buildAttachmentFromFile(item);
-      const created = await createEvent(env, accessToken, splitEvent, meta, {
-        summaryHash: hash,
-      }, attachments ? [attachments] : undefined);
+      preparedEvents.push({ input: splitEvent, hash, meta });
+    }
+
+    // If any part is duplicate, skip the entire event group
+    if (hasDuplicate) {
       await putProcessedRecord(env, item.id, {
-        ...meta,
+        eventId: "duplicate-skip",
+        nttNo: item.id,
+        processedAt: new Date().toISOString(),
+        hash: preparedEvents[0]?.hash ?? "",
+      });
+      continue;
+    }
+
+    // Create all events (now we know none are duplicates)
+    const newlyCreatedEvents: GoogleCalendarEvent[] = [];
+    const attachments = buildAttachmentFromFile(item);
+
+    for (const prepared of preparedEvents) {
+      const created = await createEvent(env, accessToken, prepared.input, prepared.meta, {
+        summaryHash: prepared.hash,
+      }, attachments ? [attachments] : undefined);
+
+      newlyCreatedEvents.push(created);
+    }
+
+    // All events created successfully, now commit state changes atomically
+    for (let i = 0; i < newlyCreatedEvents.length; i++) {
+      const created = newlyCreatedEvents[i];
+      const prepared = preparedEvents[i];
+
+      await putProcessedRecord(env, item.id, {
+        ...prepared.meta,
         eventId: created.id,
       });
+
       existingEvents.push(created);
       createdEvents.push(created);
 
@@ -271,7 +304,7 @@ export async function processNewItem(
       const calendarUrl = created.htmlLink ?? buildCalendarEventUrl(created.id, env.GOOGLE_CALENDAR_ID);
       await sendNotification(
         {
-          eventTitle: splitEvent.title,
+          eventTitle: prepared.input.title,
           rssUrl: item.link,
           eventUrl: calendarUrl,
         },
