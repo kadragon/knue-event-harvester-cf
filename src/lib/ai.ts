@@ -28,10 +28,11 @@ const OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions";
 const AI_GATEWAY_ENDPOINT_TEMPLATE = "https://gateway.ai.cloudflare.com/v1/{accountId}/{gatewayName}/openai/chat/completions";
 
 function decodeHtmlEntities(text: string): string {
+  // Decode &amp; last to prevent double-decoding
+  // (e.g., &amp;lt; should become &lt;, not <)
   return text
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&nbsp;/g, ' ')
@@ -39,7 +40,8 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&reg;/g, '®')
     .replace(/&hellip;/g, '…')
     .replace(/&mdash;/g, '—')
-    .replace(/&ndash;/g, '–');
+    .replace(/&ndash;/g, '–')
+    .replace(/&amp;/g, '&');
 }
 
 function buildOpenAIEndpoint(env: AiEnv): string {
@@ -307,7 +309,16 @@ RSS 링크: ${item.link}
 
     // If Gateway failed, try direct OpenAI
     const endpoint = buildOpenAIEndpoint(env);
-    if (endpoint.includes("gateway.ai.cloudflare.com")) {
+    let isGatewayEndpoint = false;
+    try {
+      const url = new URL(endpoint);
+      isGatewayEndpoint = url.hostname === "gateway.ai.cloudflare.com";
+    } catch {
+      // Invalid URL, treat as not gateway
+      isGatewayEndpoint = false;
+    }
+
+    if (isGatewayEndpoint) {
       response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: buildHeaders(env),

@@ -106,8 +106,10 @@ function formatMessage(payload: TelegramNotificationPayload): string {
 
 /**
  * Escape special markdown characters for MarkdownV2
- * Uses single regex for better performance
+ * Backslashes must be escaped first to prevent double-escaping
  */
 function escapeMarkdown(text: string): string {
-  return text.replace(/[_*[\].()~`>#+\-=|{}.!]/g, '\\$&');
+  return text
+    .replace(/\\/g, '\\\\')
+    .replace(/[_*[\].()~`>#+\-=|{}.!]/g, '\\$&');
 }

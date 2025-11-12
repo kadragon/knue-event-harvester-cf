@@ -21,12 +21,24 @@ function decodeEntities(input: string): string {
 
 export function htmlToText(html: string): string {
   if (!html) return "";
-  const normalized = html
+
+  // Remove script and style tags with their content, handling spaces in closing tags
+  // Use multiple passes to ensure complete removal
+  let normalized = html;
+  let prevLength = 0;
+
+  while (normalized.length !== prevLength) {
+    prevLength = normalized.length;
+    normalized = normalized
+      .replace(/<script[\s\S]*?<\/\s*script\s*>/gi, "")
+      .replace(/<style[\s\S]*?<\/\s*style\s*>/gi, "");
+  }
+
+  // Now process other HTML tags
+  normalized = normalized
     .replace(/<\s*br\s*\/?\s*>/gi, "\n")
     .replace(/<\/(p|div|li)>/gi, "\n")
     .replace(/<li[^>]*>/gi, "- ")
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<[^>]+>/g, "")
     .replace(/\r/g, "");
 
