@@ -4,6 +4,9 @@ import {
   isWithinLastWeek,
   buildDescription,
   processNewItem,
+  formatDateForDisplay,
+  calculateDaysDuration,
+  splitLongEvent,
 } from '../src/index';
 import type { RssItem, AiSummary, CalendarEventInput, ProcessedRecord } from '../src/types';
 
@@ -189,6 +192,198 @@ describe('index.ts Core Functions', () => {
       // When item.link is present, it always adds 관련 링크 section
       expect(description).toContain('Only summary');
       expect(description).toContain('관련 링크:');
+    });
+  });
+
+  describe('formatDateForDisplay', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should omit year when date is in current year', () => {
+      vi.setSystemTime(new Date('2025-06-15'));
+      expect(formatDateForDisplay('2025-10-28')).toBe('10-28');
+      expect(formatDateForDisplay('2025-01-01')).toBe('01-01');
+      expect(formatDateForDisplay('2025-12-31')).toBe('12-31');
+    });
+
+    it('should include year when date is in different year', () => {
+      vi.setSystemTime(new Date('2025-06-15'));
+      expect(formatDateForDisplay('2026-10-28')).toBe('2026-10-28');
+      expect(formatDateForDisplay('2024-01-01')).toBe('2024-01-01');
+    });
+
+    it('should handle edge case of year boundary', () => {
+      vi.setSystemTime(new Date('2025-12-31'));
+      expect(formatDateForDisplay('2025-12-31')).toBe('12-31');
+      expect(formatDateForDisplay('2026-01-01')).toBe('2026-01-01');
+    });
+  });
+
+  describe('calculateDaysDuration', () => {
+    it('should return 1 for same day event', () => {
+      expect(calculateDaysDuration('2025-10-28', '2025-10-28')).toBe(1);
+    });
+
+    it('should return 2 for consecutive days', () => {
+      expect(calculateDaysDuration('2025-10-28', '2025-10-29')).toBe(2);
+    });
+
+    it('should return 3 for 3-day event', () => {
+      expect(calculateDaysDuration('2025-10-28', '2025-10-30')).toBe(3);
+    });
+
+    it('should return 4 for 4-day event', () => {
+      expect(calculateDaysDuration('2025-10-28', '2025-10-31')).toBe(4);
+    });
+
+    it('should return 7 for week-long event', () => {
+      expect(calculateDaysDuration('2025-10-28', '2025-11-03')).toBe(7);
+    });
+
+    it('should handle month boundaries', () => {
+      expect(calculateDaysDuration('2025-10-30', '2025-11-02')).toBe(4);
+    });
+  });
+
+  describe('splitLongEvent', () => {
+    const baseEvent: CalendarEventInput = {
+      title: '학술제',
+      description: 'Event description',
+      startDate: '2025-10-28',
+      endDate: '2025-10-28',
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2025-06-15')); // Set current year to 2025
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should not split 1-day event', () => {
+      const result = splitLongEvent(baseEvent);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual(baseEvent);
+    });
+
+    it('should not split 2-day event', () => {
+      const event: CalendarEventInput = {
+        ...baseEvent,
+        endDate: '2025-10-29',
+      };
+      const result = splitLongEvent(event);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual(event);
+    });
+
+    it('should not split 3-day event', () => {
+      const event: CalendarEventInput = {
+        ...baseEvent,
+        endDate: '2025-10-30',
+      };
+      const result = splitLongEvent(event);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual(event);
+    });
+
+    it('should split 4-day event into start and end events (same year)', () => {
+      const event: CalendarEventInput = {
+        ...baseEvent,
+        endDate: '2025-10-31',
+      };
+      const result = splitLongEvent(event);
+
+      expect(result).toHaveLength(2);
+
+      // Start event - year omitted for current year
+      expect(result[0].title).toBe('학술제 (~10-31)');
+      expect(result[0].startDate).toBe('2025-10-28');
+      expect(result[0].endDate).toBe('2025-10-28');
+      expect(result[0].description).toBe('Event description');
+
+      // End event - year omitted for current year
+      expect(result[1].title).toBe('학술제 (10-28~)');
+      expect(result[1].startDate).toBe('2025-10-31');
+      expect(result[1].endDate).toBe('2025-10-31');
+      expect(result[1].description).toBe('Event description');
+    });
+
+    it('should split 7-day event into start and end events (same year)', () => {
+      const event: CalendarEventInput = {
+        ...baseEvent,
+        endDate: '2025-11-03',
+      };
+      const result = splitLongEvent(event);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].title).toBe('학술제 (~11-03)');
+      expect(result[1].title).toBe('학술제 (10-28~)');
+    });
+
+    it('should include year when event spans different years', () => {
+      const event: CalendarEventInput = {
+        ...baseEvent,
+        startDate: '2025-12-28',
+        endDate: '2026-01-02',
+      };
+      const result = splitLongEvent(event);
+
+      expect(result).toHaveLength(2);
+      // Start event: end date is in 2026 (different year)
+      expect(result[0].title).toBe('학술제 (~2026-01-02)');
+      // End event: start date is in 2025 (current year)
+      expect(result[1].title).toBe('학술제 (12-28~)');
+    });
+
+    it('should include year when event is in future year', () => {
+      const event: CalendarEventInput = {
+        ...baseEvent,
+        startDate: '2026-10-28',
+        endDate: '2026-11-02',
+      };
+      const result = splitLongEvent(event);
+
+      expect(result).toHaveLength(2);
+      // Both dates in 2026 (not current year)
+      expect(result[0].title).toBe('학술제 (~2026-11-02)');
+      expect(result[1].title).toBe('학술제 (2026-10-28~)');
+    });
+
+    it('should preserve startTime and endTime when splitting', () => {
+      const event: CalendarEventInput = {
+        ...baseEvent,
+        endDate: '2025-10-31',
+        startTime: '09:00',
+        endTime: '18:00',
+      };
+      const result = splitLongEvent(event);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].startTime).toBe('09:00');
+      expect(result[0].endTime).toBe('18:00');
+      expect(result[1].startTime).toBe('09:00');
+      expect(result[1].endTime).toBe('18:00');
+    });
+
+    it('should handle events without times', () => {
+      const event: CalendarEventInput = {
+        ...baseEvent,
+        endDate: '2025-11-01',
+      };
+      const result = splitLongEvent(event);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].startTime).toBeUndefined();
+      expect(result[0].endTime).toBeUndefined();
+      expect(result[1].startTime).toBeUndefined();
+      expect(result[1].endTime).toBeUndefined();
     });
   });
 
