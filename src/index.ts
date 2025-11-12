@@ -143,6 +143,53 @@ export function buildDescription(
   return parts.join("\n\n");
 }
 
+/**
+ * Calculate the number of days between two dates (inclusive)
+ * @param startDate - Start date in YYYY-MM-DD format
+ * @param endDate - End date in YYYY-MM-DD format
+ * @returns Number of days (inclusive)
+ */
+export function calculateDaysDuration(startDate: string, endDate: string): number {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const diffTime = end.getTime() - start.getTime();
+  const diffDays = diffTime / (1000 * 60 * 60 * 24);
+  return diffDays + 1; // +1 to make it inclusive (e.g., same day = 1 day)
+}
+
+/**
+ * Split long events (>3 days) into two separate events: one for start date, one for end date
+ * @param eventInput - Original event input
+ * @returns Array of 1 or 2 events (split if duration > 3 days)
+ */
+export function splitLongEvent(eventInput: CalendarEventInput): CalendarEventInput[] {
+  const duration = calculateDaysDuration(eventInput.startDate, eventInput.endDate);
+
+  // If duration is 3 days or less, return the original event
+  if (duration <= 3) {
+    return [eventInput];
+  }
+
+  // Split into two events
+  const startEvent: CalendarEventInput = {
+    ...eventInput,
+    title: `${eventInput.title} (~${eventInput.endDate})`,
+    endDate: eventInput.startDate, // Make it single-day event
+    startTime: eventInput.startTime,
+    endTime: eventInput.endTime,
+  };
+
+  const endEvent: CalendarEventInput = {
+    ...eventInput,
+    title: `${eventInput.title} (${eventInput.startDate}~)`,
+    startDate: eventInput.endDate, // Make it single-day event
+    startTime: eventInput.startTime,
+    endTime: eventInput.endTime,
+  };
+
+  return [startEvent, endEvent];
+}
+
 export async function processNewItem(
   env: Env,
   item: RssItem,
@@ -177,55 +224,60 @@ export async function processNewItem(
     const description = buildDescription(item, summary);
     eventInput.description = description;
 
-    const hash = await computeHash(eventInput);
-    const meta: ProcessedRecord = {
-      eventId: "",
-      nttNo: item.id,
-      processedAt: new Date().toISOString(),
-      hash,
-    };
+    // Split long events (>3 days) into two separate events
+    const eventsToCreate = splitLongEvent(eventInput);
 
-    const duplicate = await isDuplicate(existingEvents, eventInput, {
-      threshold: similarityThreshold,
-      meta,
-    });
-    if (duplicate) {
-      console.log(
-        `Duplicate detected for ${item.id} event: ${eventInput.title}`
-      );
-      // 중복 감지 시에도 상태 저장 (다시 처리하지 않도록)
-      await putProcessedRecord(env, item.id, {
-        eventId: "duplicate-skip",
+    for (const splitEvent of eventsToCreate) {
+      const hash = await computeHash(splitEvent);
+      const meta: ProcessedRecord = {
+        eventId: "",
         nttNo: item.id,
         processedAt: new Date().toISOString(),
         hash,
+      };
+
+      const duplicate = await isDuplicate(existingEvents, splitEvent, {
+        threshold: similarityThreshold,
+        meta,
       });
-      continue;
+      if (duplicate) {
+        console.log(
+          `Duplicate detected for ${item.id} event: ${splitEvent.title}`
+        );
+        // 중복 감지 시에도 상태 저장 (다시 처리하지 않도록)
+        await putProcessedRecord(env, item.id, {
+          eventId: "duplicate-skip",
+          nttNo: item.id,
+          processedAt: new Date().toISOString(),
+          hash,
+        });
+        continue;
+      }
+
+      // AC-4, AC-5: 첨부파일 처리
+      const attachments = buildAttachmentFromFile(item);
+      const created = await createEvent(env, accessToken, splitEvent, meta, {
+        summaryHash: hash,
+      }, attachments ? [attachments] : undefined);
+      await putProcessedRecord(env, item.id, {
+        ...meta,
+        eventId: created.id,
+      });
+      existingEvents.push(created);
+      createdEvents.push(created);
+
+      // Send Telegram notification (fire-and-forget, errors handled internally)
+      // Prefer htmlLink from API, fallback to building URL with proper eid encoding
+      const calendarUrl = created.htmlLink ?? buildCalendarEventUrl(created.id, env.GOOGLE_CALENDAR_ID);
+      await sendNotification(
+        {
+          eventTitle: splitEvent.title,
+          rssUrl: item.link,
+          eventUrl: calendarUrl,
+        },
+        env
+      );
     }
-
-    // AC-4, AC-5: 첨부파일 처리
-    const attachments = buildAttachmentFromFile(item);
-    const created = await createEvent(env, accessToken, eventInput, meta, {
-      summaryHash: hash,
-    }, attachments ? [attachments] : undefined);
-    await putProcessedRecord(env, item.id, {
-      ...meta,
-      eventId: created.id,
-    });
-    existingEvents.push(created);
-    createdEvents.push(created);
-
-    // Send Telegram notification (fire-and-forget, errors handled internally)
-    // Prefer htmlLink from API, fallback to building URL with proper eid encoding
-    const calendarUrl = created.htmlLink ?? buildCalendarEventUrl(created.id, env.GOOGLE_CALENDAR_ID);
-    await sendNotification(
-      {
-        eventTitle: eventInput.title,
-        rssUrl: item.link,
-        eventUrl: calendarUrl,
-      },
-      env
-    );
   }
 
   // 의미있는 일정이 없었을 때 상태 저장 (한 번 시도 후 더 이상 재시도하지 않음)
