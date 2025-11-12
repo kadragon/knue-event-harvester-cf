@@ -99,5 +99,116 @@ describe('HTML Module', () => {
       const html = 'Text with &amp & &amp; malformed &; entities';
       expect(htmlToText(html)).toBe('Text with &amp & & malformed &; entities');
     });
+
+    // Double-escaping prevention tests
+    describe('double-escaping prevention', () => {
+      it('should not double-decode &amp;lt; (should stay as &lt;, not become <)', () => {
+        const html = '&amp;lt;';
+        expect(htmlToText(html)).toBe('&lt;');
+      });
+
+      it('should not double-decode &amp;gt; (should stay as &gt;, not become >)', () => {
+        const html = '&amp;gt;';
+        expect(htmlToText(html)).toBe('&gt;');
+      });
+
+      it('should not double-decode &amp;amp; (should stay as &amp;, not become &)', () => {
+        const html = '&amp;amp;';
+        expect(htmlToText(html)).toBe('&amp;');
+      });
+
+      it('should handle mixed double-encoded entities', () => {
+        const html = '&amp;lt;script&amp;gt;alert(&amp;quot;xss&amp;quot;)&amp;lt;/script&amp;gt;';
+        expect(htmlToText(html)).toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
+      });
+
+      it('should decode single level entities correctly', () => {
+        const html = '&lt;div&gt; &amp; &quot;test&quot;';
+        expect(htmlToText(html)).toBe('<div> & "test"');
+      });
+
+      it('should handle triple-encoded entities (only decode once)', () => {
+        const html = '&amp;amp;lt;';
+        expect(htmlToText(html)).toBe('&amp;lt;');
+      });
+
+      it('should handle real-world double-encoded content', () => {
+        const html = '<p>Use &amp;lt;br&amp;gt; for line breaks</p>';
+        expect(htmlToText(html)).toBe('Use &lt;br&gt; for line breaks');
+      });
+    });
+
+    // Security tests for dangerous tag removal
+    describe('dangerous tag removal (security)', () => {
+      it('should handle script tags with spaces in closing tag', () => {
+        const html = '<p>Before</p><script>alert("xss")</script ><p>After</p>';
+        expect(htmlToText(html)).toBe('Before\nAfter');
+      });
+
+      it('should handle script tags with tabs and newlines in closing tag', () => {
+        const html = '<p>Before</p><script>alert("xss")</script\t\n bar><p>After</p>';
+        expect(htmlToText(html)).toBe('Before\nAfter');
+      });
+
+      it('should handle script tags with attributes in closing tag', () => {
+        const html = '<p>Before</p><script>alert("xss")</script foo="bar"><p>After</p>';
+        expect(htmlToText(html)).toBe('Before\nAfter');
+      });
+
+      it('should handle style tags with spaces in closing tag', () => {
+        const html = '<p>Before</p><style>body{color:red}</style ><p>After</p>';
+        expect(htmlToText(html)).toBe('Before\nAfter');
+      });
+
+      it('should handle mixed case script tags', () => {
+        const html = '<p>Before</p><SCRIPT>alert("xss")</ScRiPt><p>After</p>';
+        expect(htmlToText(html)).toBe('Before\nAfter');
+      });
+
+      it('should handle multiple script tags with various closing formats', () => {
+        const html = '<script>bad1()</script><p>Text</p><script>bad2()</script ><p>More</p>';
+        expect(htmlToText(html)).toBe('Text\nMore');
+      });
+
+      it('should handle nested-like script content', () => {
+        // Note: Like real browsers, parser treats </script> inside string as closing tag
+        // This is expected behavior - HTML parsers don't understand JavaScript context
+        const html = '<p>Before</p><script>var x = "<script>nested</script>";</script><p>After</p>';
+        expect(htmlToText(html)).toBe('Before\n";After');
+      });
+
+      it('should handle malformed script tag without closing tag', () => {
+        const html = '<p>Before</p><script>alert("xss")';
+        expect(htmlToText(html)).toBe('Before');
+      });
+
+      it('should handle malformed script tag without closing bracket', () => {
+        // Malformed closing tag without > - parser continues processing
+        const html = '<p>Before</p><script>alert("xss")</script<p>After</p>';
+        expect(htmlToText(html)).toBe('Before\nAfter');
+      });
+
+      it('should handle script and style tags together', () => {
+        const html = '<p>Text</p><script>bad()</script ><style>bad{}</style\t><p>More</p>';
+        expect(htmlToText(html)).toBe('Text\nMore');
+      });
+
+      it('should handle script tags with attributes', () => {
+        const html = '<p>Before</p><script type="text/javascript" src="evil.js">alert("xss")</script ><p>After</p>';
+        expect(htmlToText(html)).toBe('Before\nAfter');
+      });
+
+      it('should handle nested/malformed tags (CodeQL case)', () => {
+        // Tests for incomplete multi-character sanitization vulnerability
+        // Iterative removal handles cases like <<div>text</div>>
+        const html = '<p>Text</p><<div>nested</div>><p>More</p>';
+        expect(htmlToText(html)).toBe('Text\nnested\nMore');
+      });
+
+      it('should handle self-closing malformed tags', () => {
+        const html = '<p>Start</p><<img src="x"/><p>End</p>';
+        expect(htmlToText(html)).toBe('Start\nEnd');
+      });
+    });
   });
 });

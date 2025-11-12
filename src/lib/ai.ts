@@ -27,19 +27,36 @@ const JSON_FALLBACK: AiSummary = {
 const OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions";
 const AI_GATEWAY_ENDPOINT_TEMPLATE = "https://gateway.ai.cloudflare.com/v1/{accountId}/{gatewayName}/openai/chat/completions";
 
+const HTML_ENTITY_MAP: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  copy: "©",
+  reg: "®",
+  hellip: "…",
+  mdash: "—",
+  ndash: "–",
+};
+
 function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&copy;/g, '©')
-    .replace(/&reg;/g, '®')
-    .replace(/&hellip;/g, '…')
-    .replace(/&mdash;/g, '—')
-    .replace(/&ndash;/g, '–');
+  // Handle numeric entities (&#233;, &#x3A9;) and named entities (&lt;, &amp;)
+  // Using regex approach ensures proper handling of all entity types
+  return text.replace(/&(#\d+|#x[\da-fA-F]+|[a-zA-Z]+);/g, (match, entity) => {
+    // Hexadecimal numeric entity (e.g., &#x3A9; -> Ω)
+    if (entity.startsWith("#x")) {
+      return String.fromCodePoint(parseInt(entity.slice(2), 16));
+    }
+    // Decimal numeric entity (e.g., &#233; -> é)
+    if (entity.startsWith("#")) {
+      return String.fromCodePoint(parseInt(entity.slice(1), 10));
+    }
+    // Named entity (e.g., &amp; -> &)
+    // Return the entity itself if not found in map (prevents breaking unknown entities)
+    return HTML_ENTITY_MAP[entity] ?? match;
+  });
 }
 
 function buildOpenAIEndpoint(env: AiEnv): string {
@@ -307,7 +324,16 @@ RSS 링크: ${item.link}
 
     // If Gateway failed, try direct OpenAI
     const endpoint = buildOpenAIEndpoint(env);
-    if (endpoint.includes("gateway.ai.cloudflare.com")) {
+    let isGatewayEndpoint = false;
+    try {
+      const url = new URL(endpoint);
+      isGatewayEndpoint = url.hostname === "gateway.ai.cloudflare.com";
+    } catch {
+      // Invalid URL, treat as not gateway
+      isGatewayEndpoint = false;
+    }
+
+    if (isGatewayEndpoint) {
       response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: buildHeaders(env),

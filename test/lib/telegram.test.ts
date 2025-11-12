@@ -43,8 +43,9 @@ describe('telegram', () => {
       const body = JSON.parse(call[1].body);
       expect(body.chat_id).toBe('987654321');
       expect(body.text).toContain('KNUE 개교기념일');
-      expect(body.text).toContain('https://knue.ac.kr/rssBbsNtt.do?nttNo=123');
-      expect(body.text).toContain('https://calendar.google.com/calendar/u/0/r/eventedit/abc123');
+      // URLs are now escaped for MarkdownV2
+      expect(body.text).toContain('https://knue\\.ac\\.kr/rssBbsNtt\\.do?nttNo\\=123');
+      expect(body.text).toContain('https://calendar\\.google\\.com/calendar/u/0/r/eventedit/abc123');
     });
 
     // AC-2: Missing environment variables
@@ -170,7 +171,8 @@ describe('telegram', () => {
       await sendNotification(payload, env);
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.text).toContain('https://knue.ac.kr/rssBbsNtt.do?nttNo=123');
+      // URLs are now escaped for MarkdownV2
+      expect(body.text).toContain('https://knue\\.ac\\.kr/rssBbsNtt\\.do?nttNo\\=123');
       expect(mockFetch).toHaveBeenCalledOnce();
     });
 
