@@ -580,5 +580,140 @@ describe('AI Module', () => {
       expect(body.messages[1].content).toContain(mockItem.title);
       expect(body.messages[1].content).toContain(mockItem.pubDate);
     });
+
+    // Double-escaping prevention tests
+    describe('double-escaping prevention in descriptionHtml', () => {
+      it('should not double-decode &amp;lt; in description (should stay as &lt;)', async () => {
+        const itemWithDoubleEncoded: RssItem = {
+          ...mockItem,
+          descriptionHtml: '<p>Use &amp;lt;br&amp;gt; for breaks</p>',
+        };
+
+        fetchMock.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  events: [{
+                    title: 'test',
+                    description: 'test',
+                  }],
+                }),
+              },
+            }],
+          }),
+        });
+
+        await generateEventInfos(mockEnv, itemWithDoubleEncoded);
+
+        const callArgs = fetchMock.mock.calls[0];
+        const body = JSON.parse(callArgs[1].body);
+        const promptContent = body.messages[1].content;
+
+        // The prompt should contain decoded once: &lt;br&gt; not <br>
+        expect(promptContent).toContain('&lt;br&gt;');
+        expect(promptContent).not.toContain('<br>');
+      });
+
+      it('should decode single-level entities correctly', async () => {
+        const itemWithSingleEncoded: RssItem = {
+          ...mockItem,
+          descriptionHtml: '<p>Date: 2025-01-01 &amp; Time: 09:00</p>',
+        };
+
+        fetchMock.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  events: [{
+                    title: 'test',
+                    description: 'test',
+                  }],
+                }),
+              },
+            }],
+          }),
+        });
+
+        await generateEventInfos(mockEnv, itemWithSingleEncoded);
+
+        const callArgs = fetchMock.mock.calls[0];
+        const body = JSON.parse(callArgs[1].body);
+        const promptContent = body.messages[1].content;
+
+        // Single &amp; should be decoded to &
+        expect(promptContent).toContain('2025-01-01 & Time: 09:00');
+      });
+
+      it('should handle mixed single and double-encoded entities', async () => {
+        const itemWithMixed: RssItem = {
+          ...mockItem,
+          descriptionHtml: '<p>&lt;script&gt; and &amp;amp; and &amp;lt;tag&amp;gt;</p>',
+        };
+
+        fetchMock.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  events: [{
+                    title: 'test',
+                    description: 'test',
+                  }],
+                }),
+              },
+            }],
+          }),
+        });
+
+        await generateEventInfos(mockEnv, itemWithMixed);
+
+        const callArgs = fetchMock.mock.calls[0];
+        const body = JSON.parse(callArgs[1].body);
+        const promptContent = body.messages[1].content;
+
+        // Each entity decoded exactly once
+        expect(promptContent).toContain('<script>');  // &lt; &gt; decoded once
+        expect(promptContent).toContain('&amp;');     // &amp;amp; decoded once
+        expect(promptContent).toContain('&lt;tag&gt;'); // &amp;lt; &amp;gt; decoded once
+      });
+
+      it('should handle numeric entities without double-decoding', async () => {
+        const itemWithNumeric: RssItem = {
+          ...mockItem,
+          descriptionHtml: '<p>Café &#233; and &#x3A9; Omega</p>',
+        };
+
+        fetchMock.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  events: [{
+                    title: 'test',
+                    description: 'test',
+                  }],
+                }),
+              },
+            }],
+          }),
+        });
+
+        await generateEventInfos(mockEnv, itemWithNumeric);
+
+        const callArgs = fetchMock.mock.calls[0];
+        const body = JSON.parse(callArgs[1].body);
+        const promptContent = body.messages[1].content;
+
+        // Numeric entities decoded correctly
+        expect(promptContent).toContain('Café é');
+        expect(promptContent).toContain('Ω Omega');
+      });
+    });
   });
 });

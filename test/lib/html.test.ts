@@ -100,6 +100,44 @@ describe('HTML Module', () => {
       expect(htmlToText(html)).toBe('Text with &amp & & malformed &; entities');
     });
 
+    // Double-escaping prevention tests
+    describe('double-escaping prevention', () => {
+      it('should not double-decode &amp;lt; (should stay as &lt;, not become <)', () => {
+        const html = '&amp;lt;';
+        expect(htmlToText(html)).toBe('&lt;');
+      });
+
+      it('should not double-decode &amp;gt; (should stay as &gt;, not become >)', () => {
+        const html = '&amp;gt;';
+        expect(htmlToText(html)).toBe('&gt;');
+      });
+
+      it('should not double-decode &amp;amp; (should stay as &amp;, not become &)', () => {
+        const html = '&amp;amp;';
+        expect(htmlToText(html)).toBe('&amp;');
+      });
+
+      it('should handle mixed double-encoded entities', () => {
+        const html = '&amp;lt;script&amp;gt;alert(&amp;quot;xss&amp;quot;)&amp;lt;/script&amp;gt;';
+        expect(htmlToText(html)).toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
+      });
+
+      it('should decode single level entities correctly', () => {
+        const html = '&lt;div&gt; &amp; &quot;test&quot;';
+        expect(htmlToText(html)).toBe('<div> & "test"');
+      });
+
+      it('should handle triple-encoded entities (only decode once)', () => {
+        const html = '&amp;amp;lt;';
+        expect(htmlToText(html)).toBe('&amp;lt;');
+      });
+
+      it('should handle real-world double-encoded content', () => {
+        const html = '<p>Use &amp;lt;br&amp;gt; for line breaks</p>';
+        expect(htmlToText(html)).toBe('Use &lt;br&gt; for line breaks');
+      });
+    });
+
     // Security tests for dangerous tag removal
     describe('dangerous tag removal (security)', () => {
       it('should handle script tags with spaces in closing tag', () => {
