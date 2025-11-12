@@ -144,6 +144,24 @@ export function buildDescription(
 }
 
 /**
+ * Format date for display, omitting year if it matches current year
+ * @param date - Date in YYYY-MM-DD format
+ * @returns Formatted date (MM-DD if current year, YYYY-MM-DD otherwise)
+ */
+export function formatDateForDisplay(date: string): string {
+  const currentYear = new Date().getFullYear();
+  const dateYear = parseInt(date.substring(0, 4), 10);
+
+  if (dateYear === currentYear) {
+    // Return MM-DD format (omit year)
+    return date.substring(5); // Returns "MM-DD"
+  }
+
+  // Return full YYYY-MM-DD format
+  return date;
+}
+
+/**
  * Calculate the number of days between two dates (inclusive)
  * @param startDate - Start date in YYYY-MM-DD format
  * @param endDate - End date in YYYY-MM-DD format
@@ -170,10 +188,14 @@ export function splitLongEvent(eventInput: CalendarEventInput): CalendarEventInp
     return [eventInput];
   }
 
+  // Format dates for display (omit year if current year)
+  const formattedStartDate = formatDateForDisplay(eventInput.startDate);
+  const formattedEndDate = formatDateForDisplay(eventInput.endDate);
+
   // Split into two events
   const startEvent: CalendarEventInput = {
     ...eventInput,
-    title: `${eventInput.title} (~${eventInput.endDate})`,
+    title: `${eventInput.title} (~${formattedEndDate})`,
     endDate: eventInput.startDate, // Make it single-day event
     startTime: eventInput.startTime,
     endTime: eventInput.endTime,
@@ -181,7 +203,7 @@ export function splitLongEvent(eventInput: CalendarEventInput): CalendarEventInp
 
   const endEvent: CalendarEventInput = {
     ...eventInput,
-    title: `${eventInput.title} (${eventInput.startDate}~)`,
+    title: `${eventInput.title} (${formattedStartDate}~)`,
     startDate: eventInput.endDate, // Make it single-day event
     startTime: eventInput.startTime,
     endTime: eventInput.endTime,
