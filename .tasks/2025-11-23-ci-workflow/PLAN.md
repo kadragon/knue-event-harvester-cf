@@ -11,7 +11,7 @@ owner: codex
 
 # Plan
 
-1. Add `typecheck` npm script (tsc --noEmit).
-2. Update CI workflow to use Node 22 and run lint/test/typecheck on PRs using existing v6 action versions.
+1. Add `typecheck` npm script (tsc --noEmit) for local use.
+2. Update CI workflow to use Node 22 and run lint/test on PRs (lint already typechecks) using existing v6 action versions.
 3. Verify workflow syntax; no change to triggers (PR to main only).
 4. Record progress in PROGRESS.md.

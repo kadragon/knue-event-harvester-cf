@@ -13,4 +13,4 @@ owner: codex
 
 ## 2025-11-23
 - Added `typecheck` npm script (tsc --noEmit).
-- Updated CI workflow to Node 22 and run lint/test/typecheck on PRs with actions v6.
+- Updated CI workflow to Node 22 and run lint/test on PRs with actions v6 (typecheck covered by lint).
