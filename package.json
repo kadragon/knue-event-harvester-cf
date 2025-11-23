@@ -10,6 +10,7 @@
     "test:coverage": "vitest --run --coverage",
     "test:coverage:ui": "vitest --run --coverage --reporter=html",
     "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "prepare": "husky"
   },
   "dependencies": {

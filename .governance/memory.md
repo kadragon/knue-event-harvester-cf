@@ -14,6 +14,7 @@ owner: codex
 - Observed build failure on npm install: peer conflict between `vitest@3.2.4` and `@vitest/coverage-v8@4.0.10`.
 - Decided to align coverage plugin to Vitest v3 to remove ERESOLVE without upgrading test runner.
 - Added new spec `SPEC-BUILD-DEPS-001` and task `TASK-2025-11-23-BUILD-DEPS` to track the fix.
+- Added CI workflow spec/task (`SPEC-CI-WORKFLOW-001`) to enforce lint/test/typecheck on PRs with Node 22.
 
 ## Next Session Hints
 - Keep Vitest-related packages on matching major versions to avoid peer conflicts in CI.
