@@ -10,6 +10,7 @@
     "test:coverage": "vitest --run --coverage",
     "test:coverage:ui": "vitest --run --coverage --reporter=html",
     "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "prepare": "husky"
   },
   "dependencies": {
@@ -23,7 +24,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240903.0",
     "@types/node": "^24.8.1",
-    "@vitest/coverage-v8": "^4.0.10",
+    "@vitest/coverage-v8": "^3.2.4",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.4",
     "typescript": "^5.4.5",
