@@ -29,7 +29,7 @@
     "lint-staged": "^16.2.7",
     "typescript": "^5.4.5",
     "vite": "^7.3.0",
-    "vitest": "^3.2.4",
+    "vitest": "^4.0.16",
     "wrangler": "^4.54.0"
   }
 }
