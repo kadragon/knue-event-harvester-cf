@@ -13,8 +13,8 @@ id = "68a5f081c9544cbe975b7de5f29118b1"
 
 [vars]
 PREVIEW_PARSER_BASE = "https://knue-www-preview-parser-cf.kangdongouk.workers.dev"
-OPENAI_CONTENT_MODEL = "gpt-4o-mini"
-OPENAI_VISION_MODEL = "gpt-4o-mini"
+OPENAI_CONTENT_MODEL = "gpt-5-mini"
+OPENAI_VISION_MODEL = "gpt-5-mini"
 SIMILARITY_THRESHOLD = "0.85"
 LOOKBACK_DAYS = "30"
 GOOGLE_CALENDAR_ID = "b71b5c37386baf51a196b6a1de3013726b55f51aa571d583f477cdacaf12bd5d@group.calendar.google.com"

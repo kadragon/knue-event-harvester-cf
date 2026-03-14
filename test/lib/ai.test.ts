@@ -576,7 +576,7 @@ describe('AI Module', () => {
       const body = JSON.parse(callArgs[1].body);
 
       expect(body.model).toBe(mockEnv.OPENAI_CONTENT_MODEL);
-      expect(body.response_format.type).toBe('json_object');
+      expect(body.response_format.type).toBe('json_schema');
       expect(body.messages[1].content).toContain(mockItem.title);
       expect(body.messages[1].content).toContain(mockItem.pubDate);
     });

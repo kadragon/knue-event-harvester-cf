@@ -110,7 +110,7 @@ export async function extractTextFromImage(
       {
         role: "system",
         content:
-          "You are an OCR assistant. Extract all readable Korean text. Return JSON {\"extractedText\": string}.",
+          "이미지에서 읽을 수 있는 모든 한국어 텍스트를 추출하는 OCR 어시스턴트입니다.",
       },
       {
         role: "user",
@@ -128,7 +128,21 @@ export async function extractTextFromImage(
         ],
       },
     ],
-    response_format: { type: "json_object" },
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "ocr_result",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            extractedText: { type: "string" },
+          },
+          required: ["extractedText"],
+          additionalProperties: false,
+        },
+      },
+    },
   };
 
   const endpoint = buildOpenAIEndpoint(env);
@@ -168,12 +182,29 @@ export async function generateSummary(
 
   const payload = {
     model: env.OPENAI_CONTENT_MODEL,
-    response_format: { type: "json_object" },
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "announcement_summary",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            summary: { type: "string" },
+            highlights: { type: "array", items: { type: "string" } },
+            actionItems: { type: "array", items: { type: "string" } },
+            links: { type: "array", items: { type: "string" } },
+          },
+          required: ["summary", "highlights", "actionItems", "links"],
+          additionalProperties: false,
+        },
+      },
+    },
     messages: [
       {
         role: "system",
         content:
-          "You are a helpful assistant that summarizes university announcements. Output JSON with keys summary (string), highlights (string[]), actionItems (string[]), links (string[]). Korean language only.",
+          "한국교원대학교 공지사항을 요약하는 어시스턴트입니다. 한국어로만 작성하세요.",
       },
       {
         role: "user",
@@ -278,6 +309,15 @@ RSS 링크: ${item.link}
 - "본문"을 분석하여 다수의 행사가 있는지 확인합니다.
 - 각 행사는 개별 일정으로 분리하여 처리해야 합니다.
 
+■ 일정으로 추출하지 않아야 하는 경우 (빈 events 배열 반환):
+- 구체적인 날짜(YYYY-MM-DD 또는 M월 D일 등)가 본문에 없는 일반 공지
+- 인사 발령, 조직 변경, 시설 안내, 규정 변경 등 일정이 아닌 공지
+- "추후 공지", "별도 안내" 등 날짜가 미정인 경우
+
+■ 신청/접수 마감일만 있는 경우:
+- 마감일을 startDate와 endDate로 사용하여 일정으로 추출합니다.
+- title에 "(마감)" 등을 포함하여 마감일임을 명시합니다.
+
 행사 날짜 처리 기준:
 - 연도가 명시된 경우: 해당 연도를 그대로 사용합니다.
 - 연도가 없는 경우:
@@ -286,27 +326,55 @@ RSS 링크: ${item.link}
     - 기준 연도의 행사일이 게시일 이전인 경우: 연도를 1년 뒤로 조정하여 게시일 이후가 되도록 합니다.
 - 모든 행사일은 반드시 게시일 이후여야 합니다.
 
-시간대:
+시간 처리 기준:
 - Asia/Seoul (KST) 시간대를 사용합니다.
+- 종일 행사 또는 시간이 명시되지 않은 경우: startTime과 endTime을 모두 null로 설정합니다.
+- 시작 시간만 있고 종료 시간이 불분명한 경우: endTime을 null로 설정합니다.
+- 시간 형식: HH:MM (24시간제)
 
 행사 설명 작성 기준:
 - 명확한 항목 형식으로 구성되어야 하며, 이모지를 포함할 수 있습니다.
 - 예시:
     - 👐 대상: 재학생
-    - 🧑‍🏫 강사: 홍길동
-
-반환 형식:
-- 행사 정보는 항상 목록(List) 형태로 반환해야 합니다. 하나의 행사만 있는 경우에도 마찬가지입니다.
-- 각 이벤트: title, description, startDate (YYYY-MM-DD), endDate (YYYY-MM-DD), startTime (HH:MM, optional), endTime (HH:MM, optional)`;
+    - 🧑‍🏫 강사: 홍길동`;
 
   const payload = {
     model: env.OPENAI_CONTENT_MODEL,
-    response_format: { type: "json_object" },
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "calendar_events",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            events: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string" },
+                  startDate: { type: "string" },
+                  endDate: { type: "string" },
+                  startTime: { type: ["string", "null"] },
+                  endTime: { type: ["string", "null"] },
+                },
+                required: ["title", "description", "startDate", "endDate", "startTime", "endTime"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["events"],
+          additionalProperties: false,
+        },
+      },
+    },
     messages: [
       {
         role: "system",
         content:
-        "You are a helpful assistant that extracts calendar event information from university announcements. Analyze the content to identify multiple events if present. Output JSON with key 'events' containing an array of event objects, each with title, description, startDate, endDate, startTime (optional), endTime (optional). Korean language only for title and description.",
+        "한국교원대학교 공지사항에서 캘린더 일정 정보를 추출하는 어시스턴트입니다. 본문을 분석하여 구체적인 날짜가 있는 행사/일정만 추출하세요. 일반 공지(인사 발령, 시설 안내, 규정 변경 등)나 구체적 날짜가 없는 공지는 빈 events 배열을 반환하세요. 한국어로만 작성하세요.",
       },
       {
         role: "user",
