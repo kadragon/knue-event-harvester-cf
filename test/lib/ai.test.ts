@@ -528,7 +528,7 @@ describe('AI Module', () => {
       expect(result[0].description).toBe('설명 없음'); // Actual fallback value
     });
 
-    it('should handle missing events array and treat as single event', async () => {
+    it('should return empty array when events array is missing from response', async () => {
       const mockResponse = {
         choices: [{
           message: {
@@ -549,8 +549,28 @@ describe('AI Module', () => {
 
       const result = await generateEventInfos(mockEnv, mockItem);
 
-      expect(result).toHaveLength(1);
-      expect(result[0].title).toBe('단일 행사');
+      expect(result).toHaveLength(0);
+    });
+
+    it('should return empty array when AI returns empty events array for non-event announcement', async () => {
+      const mockResponse = {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              events: [],
+            }),
+          },
+        }],
+      };
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await generateEventInfos(mockEnv, mockItem);
+
+      expect(result).toHaveLength(0);
     });
 
     it('should request with correct prompt structure', async () => {
@@ -577,6 +597,7 @@ describe('AI Module', () => {
 
       expect(body.model).toBe(mockEnv.OPENAI_CONTENT_MODEL);
       expect(body.response_format.type).toBe('json_schema');
+      expect(body.temperature).toBeUndefined();
       expect(body.messages[1].content).toContain(mockItem.title);
       expect(body.messages[1].content).toContain(mockItem.pubDate);
     });

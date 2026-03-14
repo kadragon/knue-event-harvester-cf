@@ -211,7 +211,6 @@ export async function generateSummary(
         content: prompt,
       },
     ],
-    temperature: 0.2,
   };
 
   const endpoint = buildOpenAIEndpoint(env);
@@ -250,7 +249,7 @@ function buildEventInput(event: AiEvent, pubDate: string): CalendarEventInput {
 }
 
 async function parseEventJsonArray(content: string | undefined, pubDate: string): Promise<CalendarEventInput[]> {
-  if (!content) return [EVENT_JSON_FALLBACK];
+  if (!content) return [];
   try {
     const data = JSON.parse(content);
     if (Array.isArray(data.events)) {
@@ -259,9 +258,8 @@ async function parseEventJsonArray(content: string | undefined, pubDate: string)
         .map((event) => buildEventInput(event, pubDate))
         .filter((event) => event.title && event.description);
     } else {
-      // Single event fallback
-      const event = data as AiEvent;
-      return [buildEventInput(event, pubDate)];
+      console.warn("Unexpected response format: missing events array", content);
+      return [];
     }
   } catch (error) {
     console.error("Failed to parse event JSON", error, content);
@@ -381,7 +379,6 @@ RSS 링크: ${item.link}
         content: prompt,
       },
     ],
-    temperature: 0.2,
   };
 
   let response = await fetchEventInfoWithFallback(env, payload);
