@@ -219,19 +219,21 @@ export async function processNewItem(
   existingEvents: GoogleCalendarEvent[],
   similarityThreshold: number
 ): Promise<GoogleCalendarEvent[]> {
-  const summary = await generateSummary(env, {
-    title: item.title,
-    description: item.descriptionHtml,
-    previewText: undefined,
-    attachmentText: item.attachment
-      ? item.attachment.filename
-        ? `첨부파일: ${item.attachment.filename}`
-        : undefined
-      : undefined,
-    link: item.link,
-    pubDate: item.pubDate,
-  });
-  const eventInputs = await generateEventInfos(env, item);
+  const [summary, eventInputs] = await Promise.all([
+    generateSummary(env, {
+      title: item.title,
+      description: item.descriptionHtml,
+      previewText: undefined,
+      attachmentText: item.attachment
+        ? item.attachment.filename
+          ? `첨부파일: ${item.attachment.filename}`
+          : undefined
+        : undefined,
+      link: item.link,
+      pubDate: item.pubDate,
+    }),
+    generateEventInfos(env, item),
+  ]);
   const createdEvents: GoogleCalendarEvent[] = [];
 
   for (let eventInput of eventInputs) {
