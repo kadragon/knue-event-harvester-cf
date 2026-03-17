@@ -121,16 +121,18 @@ export function buildDescription(
 ): string {
   const parts: string[] = [];
   parts.push(summary.summary);
-  if (summary.highlights.length > 0) {
+  const limitedHighlights = summary.highlights.slice(0, 4);
+  if (limitedHighlights.length > 0) {
     parts.push(
       "주요 포인트:\n" +
-        summary.highlights.map((line) => `- ${line}`).join("\n")
+        limitedHighlights.map((line) => `- ${line}`).join("\n")
     );
   }
-  if (summary.actionItems.length > 0) {
+  const limitedActions = summary.actionItems.slice(0, 2);
+  if (limitedActions.length > 0) {
     parts.push(
       "확인/신청 사항:\n" +
-        summary.actionItems.map((line) => `- ${line}`).join("\n")
+        limitedActions.map((line) => `- ${line}`).join("\n")
     );
   }
   if (summary.links.length > 0 || item.link) {

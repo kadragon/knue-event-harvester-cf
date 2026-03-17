@@ -178,7 +178,7 @@ export async function generateSummary(
   },
 ): Promise<AiSummary> {
   const { title, description, previewText, attachmentText, link, pubDate } = params;
-  const prompt = `다음은 한국교원대학교 공지사항입니다. 핵심 정보를 JSON 으로 구성해 주세요.\n\n제목: ${title}\n게시일: ${pubDate}\n본문:\n${description}\n\n첨부/미리보기:\n${previewText ?? "(없음)"}\n\n첨부 메타:\n${attachmentText ?? "(없음)"}\n\n원문 링크: ${link}`;
+  const prompt = `다음 공지사항을 캘린더 설명용으로 간결하게 요약해 주세요. 본문을 옮기지 말고, 훑어볼 수 있는 수준으로 축약하세요.\n\n제목: ${title}\n게시일: ${pubDate}\n본문:\n${description}\n\n첨부/미리보기:\n${previewText ?? "(없음)"}\n\n첨부 메타:\n${attachmentText ?? "(없음)"}\n\n원문 링크: ${link}`;
 
   const payload = {
     model: env.OPENAI_CONTENT_MODEL,
@@ -204,7 +204,17 @@ export async function generateSummary(
       {
         role: "system",
         content:
-          "한국교원대학교 공지사항을 요약하는 어시스턴트입니다. 한국어로만 작성하세요.",
+          `한국교원대학교 공지사항을 구글 캘린더 설명용으로 요약하는 어시스턴트입니다.
+
+규칙:
+- summary: 1~2문장. 핵심만 (누가, 무엇을, 왜). 본문을 그대로 옮기지 말 것.
+- highlights: 최대 4개. 캘린더에서 빠르게 확인할 정보만 (대상, 장소, 신청방법 등).
+  - 캘린더 이벤트 자체의 시작/종료 날짜와 중복되는 정보는 제외.
+  - 각 항목은 "라벨: 값" 형식, 간결하게.
+- actionItems: 최대 2개. 사용자가 반드시 해야 할 행동만 (신청, 제출 등). 단순 안내는 제외.
+  - 동사로 시작, 한 줄로.
+- links: 본문 내 외부 URL만. 원문 링크는 별도 추가되므로 제외.
+- 한국어로만 작성하세요.`,
       },
       {
         role: "user",
@@ -331,10 +341,7 @@ RSS 링크: ${item.link}
 - 시간 형식: HH:MM (24시간제)
 
 행사 설명 작성 기준:
-- 명확한 항목 형식으로 구성되어야 하며, 이모지를 포함할 수 있습니다.
-- 예시:
-    - 👐 대상: 재학생
-    - 🧑‍🏫 강사: 홍길동`;
+- description에는 행사의 한 줄 요약만 작성하세요 (별도로 대체됩니다).`;
 
   const payload = {
     model: env.OPENAI_CONTENT_MODEL,
