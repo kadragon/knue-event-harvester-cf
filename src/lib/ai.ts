@@ -178,7 +178,19 @@ export async function generateSummary(
   },
 ): Promise<AiSummary> {
   const { title, description, previewText, attachmentText, link, pubDate } = params;
-  const prompt = `다음 공지사항을 캘린더 설명용으로 간결하게 요약해 주세요. 본문을 옮기지 말고, 훑어볼 수 있는 수준으로 축약하세요.\n\n제목: ${title}\n게시일: ${pubDate}\n본문:\n${description}\n\n첨부/미리보기:\n${previewText ?? "(없음)"}\n\n첨부 메타:\n${attachmentText ?? "(없음)"}\n\n원문 링크: ${link}`;
+  const prompt = [
+    "다음 공지사항을 캘린더 설명용으로 간결하게 요약해 주세요. 본문을 옮기지 말고, 훑어볼 수 있는 수준으로 축약하세요.",
+    "",
+    `제목: ${title}`,
+    `게시일: ${pubDate}`,
+    `본문:\n${description}`,
+    "",
+    `첨부/미리보기:\n${previewText ?? "(없음)"}`,
+    "",
+    `첨부 메타:\n${attachmentText ?? "(없음)"}`,
+    "",
+    `원문 링크: ${link}`,
+  ].join("\n");
 
   const payload = {
     model: env.OPENAI_CONTENT_MODEL,
@@ -191,8 +203,8 @@ export async function generateSummary(
           type: "object",
           properties: {
             summary: { type: "string" },
-            highlights: { type: "array", items: { type: "string" } },
-            actionItems: { type: "array", items: { type: "string" } },
+            highlights: { type: "array", items: { type: "string" }, maxItems: 4 },
+            actionItems: { type: "array", items: { type: "string" }, maxItems: 2 },
             links: { type: "array", items: { type: "string" } },
           },
           required: ["summary", "highlights", "actionItems", "links"],
@@ -213,7 +225,7 @@ export async function generateSummary(
   - 각 항목은 "라벨: 값" 형식, 간결하게.
 - actionItems: 최대 2개. 사용자가 반드시 해야 할 행동만 (신청, 제출 등). 단순 안내는 제외.
   - 동사로 시작, 한 줄로.
-- links: 본문 내 외부 URL만. 원문 링크는 별도 추가되므로 제외.
+- links: 본문 내 외부 URL만. 원문 링크(${link})와 동일한 URL만 제외.
 - 한국어로만 작성하세요.`,
       },
       {
@@ -341,7 +353,7 @@ RSS 링크: ${item.link}
 - 시간 형식: HH:MM (24시간제)
 
 행사 설명 작성 기준:
-- description에는 행사의 한 줄 요약만 작성하세요 (별도로 대체됩니다).`;
+- description에는 행사의 한 줄 요약을 반드시 작성하세요. 빈 문자열은 불가합니다.`;
 
   const payload = {
     model: env.OPENAI_CONTENT_MODEL,

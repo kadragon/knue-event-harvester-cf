@@ -115,20 +115,23 @@ export function isWithinLastWeek(pubDate: string): boolean {
   }
 }
 
+const MAX_HIGHLIGHTS = 4;
+const MAX_ACTION_ITEMS = 2;
+
 export function buildDescription(
   item: RssItem,
   summary: AiSummary
 ): string {
   const parts: string[] = [];
   parts.push(summary.summary);
-  const limitedHighlights = summary.highlights.slice(0, 4);
+  const limitedHighlights = summary.highlights.slice(0, MAX_HIGHLIGHTS);
   if (limitedHighlights.length > 0) {
     parts.push(
       "주요 포인트:\n" +
         limitedHighlights.map((line) => `- ${line}`).join("\n")
     );
   }
-  const limitedActions = summary.actionItems.slice(0, 2);
+  const limitedActions = summary.actionItems.slice(0, MAX_ACTION_ITEMS);
   if (limitedActions.length > 0) {
     parts.push(
       "확인/신청 사항:\n" +
