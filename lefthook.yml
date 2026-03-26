@@ -1,6 +1,5 @@
 pre-commit:
   commands:
     typecheck:
-      glob: "*.{ts,tsx}"
-      run: npx tsc --noEmit --skipLibCheck
-      stage_fixed: true
+      glob: "**/*.{ts,tsx}"
+      run: tsc --noEmit
