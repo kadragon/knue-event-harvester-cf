@@ -11,22 +11,16 @@
     "test:coverage:ui": "vitest --run --coverage --reporter=html",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "prepare": "husky"
+    "prepare": "lefthook install"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.8.10"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "tsc --noEmit --skipLibCheck"
-    ]
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260313.1",
     "@types/node": "^25.5.0",
     "@vitest/coverage-v8": "^4.1.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.4.0",
+    "lefthook": "^2.1.4",
     "typescript": "^5.4.5",
     "vite": "^8.0.0",
     "vitest": "^4.0.16",
