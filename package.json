@@ -14,16 +14,16 @@
     "prepare": "lefthook install"
   },
   "dependencies": {
-    "@xmldom/xmldom": "^0.8.10"
+    "@xmldom/xmldom": "^0.9.9"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260317.1",
+    "@cloudflare/workers-types": "^4.20260329.1",
     "@types/node": "^25.5.0",
-    "@vitest/coverage-v8": "^4.1.0",
+    "@vitest/coverage-v8": "^4.1.2",
     "lefthook": "^2.1.4",
     "typescript": "^5.4.5",
-    "vite": "^8.0.1",
+    "vite": "^8.0.3",
     "vitest": "^4.0.16",
-    "wrangler": "^4.76.0"
+    "wrangler": "^4.78.0"
   }
 }
