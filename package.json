@@ -17,13 +17,13 @@
     "@xmldom/xmldom": "^0.9.9"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260329.1",
-    "@types/node": "^25.5.0",
+    "@cloudflare/workers-types": "^4.20260405.1",
+    "@types/node": "^25.5.2",
     "@vitest/coverage-v8": "^4.1.2",
     "lefthook": "^2.1.4",
     "typescript": "^6.0.2",
     "vite": "^8.0.3",
     "vitest": "^4.0.16",
-    "wrangler": "^4.78.0"
+    "wrangler": "^4.80.0"
   }
 }
