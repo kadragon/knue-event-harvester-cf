@@ -3,7 +3,23 @@ import type { RssItem } from "../types.js";
 
 function textContent(node: Element | null | undefined): string {
   if (!node) return "";
-  return (node.textContent ?? "").trim();
+  return (node.textContent ?? "").trim().replace(/\uFFFD+/g, "");
+}
+
+function parseXmlDocument(xml: string): ReturnType<DOMParser["parseFromString"]> {
+  if (typeof DOMParser !== "undefined") {
+    return new DOMParser().parseFromString(xml, "text/xml");
+  }
+  const parser = new XmldomParser({
+    onError: (level: string, message: string) => {
+      // KNUE RSS feeds contain literal U+FFFD in CSS font-family values (server-side
+      // data rot from an old EUC-KR→UTF-8 migration). Suppress that specific noise;
+      // surface everything else.
+      if (level === "warning" && /Unicode replacement character/i.test(message)) return;
+      console.warn(`[xmldom ${level}] ${message}`);
+    },
+  });
+  return parser.parseFromString(xml, "text/xml") as unknown as ReturnType<DOMParser["parseFromString"]>;
 }
 
 function extractId(link: string): string {
@@ -19,9 +35,7 @@ function extractId(link: string): string {
 }
 
 export function parseRss(xml: string): RssItem[] {
-  const ParserCtor: typeof DOMParser = typeof DOMParser !== "undefined" ? DOMParser : (XmldomParser as unknown as typeof DOMParser);
-  const parser = new ParserCtor();
-  const doc = parser.parseFromString(xml, "text/xml");
+  const doc = parseXmlDocument(xml);
   const items = Array.from(doc.getElementsByTagName("item"));
 
   return items.map((item) => {

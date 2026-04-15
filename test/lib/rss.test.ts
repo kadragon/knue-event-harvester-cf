@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseRss } from "../../src/lib/rss.js";
 
 const SAMPLE_RSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -200,6 +200,58 @@ describe("parseRss", () => {
 </rss>`;
     const result = parseRss(rss);
     expect(result[0].pubDate).toBe("");
+  });
+
+  describe("U+FFFD handling", () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+    let errorSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    it("should not emit xmldom warnings for U+FFFD in description", () => {
+      // Simulate KNUE feeds: U+FFFD in CSS font-family inside description CDATA
+      const rss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title><![CDATA[행사 제목]]></title>
+      <link><![CDATA[https://example.com?nttNo=1]]></link>
+      <pubDate><![CDATA[2025-10-02]]></pubDate>
+      <description><![CDATA[<p style="font-family:\uFFFD\uFFFD\uFFFD\uFFFD, NanumGothic">본문</p>]]></description>
+    </item>
+  </channel>
+</rss>`;
+      parseRss(rss);
+      const xmldomWarnings = warnSpy.mock.calls.filter(
+        ([msg]: [unknown]) => typeof msg === "string" && /Unicode replacement character/i.test(msg),
+      );
+      expect(xmldomWarnings).toHaveLength(0);
+    });
+
+    it("should strip U+FFFD from parsed text fields", () => {
+      const rss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title><![CDATA[제목\uFFFD\uFFFD]]></title>
+      <link><![CDATA[https://example.com?nttNo=2]]></link>
+      <pubDate><![CDATA[2025-10-02]]></pubDate>
+      <description><![CDATA[본문\uFFFD내용]]></description>
+    </item>
+  </channel>
+</rss>`;
+      const result = parseRss(rss);
+      expect(result[0].title).toBe("제목");
+      expect(result[0].descriptionHtml).toBe("본문내용");
+    });
   });
 
   it("should handle malformed XML gracefully", () => {
