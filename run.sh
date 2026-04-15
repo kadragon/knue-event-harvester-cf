@@ -10,12 +10,6 @@ LOG_FILE="$LOG_DIR/harvester-$(date +%Y-%m-%d).log"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting harvester" >> "$LOG_FILE"
 
-if [ -f "$SCRIPT_DIR/.env" ]; then
-  set -a
-  source "$SCRIPT_DIR/.env"
-  set +a
-fi
-
 node "$SCRIPT_DIR/dist/index.js" >> "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
