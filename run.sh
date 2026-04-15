@@ -16,9 +16,11 @@ if git -C "$SCRIPT_DIR" pull --ff-only >> "$LOG_FILE" 2>&1; then
   CURRENT_HASH="$(md5 -q "$SCRIPT_DIR/package-lock.json" 2>/dev/null || md5sum "$SCRIPT_DIR/package-lock.json" 2>/dev/null | cut -d' ' -f1)"
   PREV_HASH="$(cat "$LOCK_HASH_FILE" 2>/dev/null || true)"
 
-  if [ "$CURRENT_HASH" != "$PREV_HASH" ]; then
+  NATIVE_BINDING="$SCRIPT_DIR/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+
+  if [ "$CURRENT_HASH" != "$PREV_HASH" ] || [ ! -f "$NATIVE_BINDING" ]; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Installing dependencies" >> "$LOG_FILE"
-    npm ci --ignore-scripts --prefer-offline >> "$LOG_FILE" 2>&1
+    npm ci --prefer-offline >> "$LOG_FILE" 2>&1
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Building" >> "$LOG_FILE"
     npm run build >> "$LOG_FILE" 2>&1
