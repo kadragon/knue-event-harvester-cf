@@ -403,11 +403,12 @@ export async function run(env: Env): Promise<{ processed: number; created: numbe
 
   for (const item of items) {
     // Filter 1: Skip items that were already processed (based on max ID) - O(1) check
+    // RSS is newest-first; first processed item means all below are also processed → break
     const itemId = Number.parseInt(item.id, 10);
-    if (itemId <= maxProcessedId) {
+    if (!Number.isNaN(itemId) && itemId <= maxProcessedId) {
       alreadyProcessedItems.push(item.id);
       processed += 1;
-      continue;
+      break;
     }
 
     // Filter 2: Only process items with pubDate within last 7 days
