@@ -15,18 +15,18 @@
     "prepare": "lefthook install"
   },
   "dependencies": {
-    "@xmldom/xmldom": "^0.8.10",
+    "@xmldom/xmldom": "^0.9.9",
     "better-sqlite3": "^11.9.1",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
-    "@types/node": "^25.5.0",
-    "@vitest/coverage-v8": "^4.1.0",
-    "lefthook": "^2.1.4",
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "lefthook": "^2.1.5",
     "tsx": "^4.16.2",
-    "typescript": "^5.4.5",
-    "vite": "^8.0.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.8",
     "vitest": "^4.0.16"
   }
 }
