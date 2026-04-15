@@ -29,7 +29,8 @@ async function callOllamaChat(
     schema: Record<string, unknown>;
   },
 ): Promise<string> {
-  const base = env.OLLAMA_HOST.replace(/\/+$/, "");
+  let base = env.OLLAMA_HOST;
+  while (base.endsWith("/")) base = base.slice(0, -1);
   const endpoint = `${base}/api/chat`;
   const response = await fetch(endpoint, {
     method: "POST",
