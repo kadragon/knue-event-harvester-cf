@@ -29,7 +29,8 @@ async function callOllamaChat(
     schema: Record<string, unknown>;
   },
 ): Promise<string> {
-  const endpoint = `${env.OLLAMA_HOST}/api/chat`;
+  const base = env.OLLAMA_HOST.replace(/\/+$/, "");
+  const endpoint = `${base}/api/chat`;
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -44,7 +45,7 @@ async function callOllamaChat(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Ollama request failed (${response.status}): ${errorText}`);
+    throw new Error(`Ollama request failed (${response.status}): ${errorText.slice(0, 500)}`);
   }
 
   const data = (await response.json()) as OllamaResponse;
@@ -298,6 +299,6 @@ export async function generateEventInfos(
     return parseEventJsonArray(content, item.pubDate);
   } catch (error) {
     console.error("generateEventInfos failed", error);
-    return [];
+    throw error;
   }
 }

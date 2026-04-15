@@ -469,7 +469,11 @@ async function main() {
   const { config } = await import("dotenv");
   config();
 
-  const dbPath = process.env.DATABASE_PATH ?? "./data/state.db";
+  const dbPath = process.env.DATABASE_PATH ?? (() => {
+    const defaultPath = new URL("../data/state.db", import.meta.url).pathname;
+    console.warn(`DATABASE_PATH not set, using default: ${defaultPath}`);
+    return defaultPath;
+  })();
   const db = openDatabase(dbPath);
 
   const env: Env = {
