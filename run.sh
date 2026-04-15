@@ -10,6 +10,15 @@ LOG_FILE="$LOG_DIR/harvester-$(date +%Y-%m-%d).log"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting harvester" >> "$LOG_FILE"
 
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Pulling latest code" >> "$LOG_FILE"
+git -C "$SCRIPT_DIR" pull --ff-only >> "$LOG_FILE" 2>&1
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Installing dependencies" >> "$LOG_FILE"
+npm ci --prefer-offline >> "$LOG_FILE" 2>&1
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Building" >> "$LOG_FILE"
+npm run build >> "$LOG_FILE" 2>&1
+
 node "$SCRIPT_DIR/dist/index.js" >> "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
