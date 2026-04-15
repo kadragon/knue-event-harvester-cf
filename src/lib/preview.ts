@@ -1,4 +1,4 @@
-import type { PreviewContent, RssItem } from "../types";
+import type { PreviewContent, RssItem } from "../types.js";
 
 export type FileType = "image" | "pdf" | "hwp" | "doc" | "other";
 

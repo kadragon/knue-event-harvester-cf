@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { deduplicateLinks, isImageFile, buildAttachmentFromFile } from '../../src/lib/utils';
-import type { RssItem } from '../../src/types';
+import { deduplicateLinks, isImageFile, buildAttachmentFromFile } from '../../src/lib/utils.js';
+import type { RssItem } from '../../src/types.js';
 
 describe('deduplicateLinks', () => {
   it('should remove duplicate links and prioritize primary link', () => {

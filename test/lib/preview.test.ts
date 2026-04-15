@@ -5,8 +5,8 @@ import {
   fetchPreviewContent,
   resolveAttachmentText,
   type EnvBindings,
-} from '../../src/lib/preview';
-import type { RssItem } from '../../src/types';
+} from '../../src/lib/preview.js';
+import type { RssItem } from '../../src/types.js';
 
 // Mock fetch
 const fetchMock = vi.fn();

@@ -1,11 +1,12 @@
 {
-  "name": "knue-event-harvester-cf",
-  "version": "0.1.0",
+  "name": "knue-event-harvester",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --test-scheduled",
-    "deploy": "wrangler deploy",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
     "test": "vitest --run",
     "test:coverage": "vitest --run --coverage",
     "test:coverage:ui": "vitest --run --coverage --reporter=html",
@@ -14,16 +15,18 @@
     "prepare": "lefthook install"
   },
   "dependencies": {
-    "@xmldom/xmldom": "^0.8.10"
+    "@xmldom/xmldom": "^0.8.10",
+    "better-sqlite3": "^11.9.1",
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260317.1",
+    "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^25.5.0",
     "@vitest/coverage-v8": "^4.1.0",
     "lefthook": "^2.1.4",
+    "tsx": "^4.16.2",
     "typescript": "^5.4.5",
     "vite": "^8.0.1",
-    "vitest": "^4.0.16",
-    "wrangler": "^4.76.0"
+    "vitest": "^4.0.16"
   }
 }

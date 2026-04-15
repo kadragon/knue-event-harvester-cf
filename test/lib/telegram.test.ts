@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { sendNotification } from '../../src/lib/telegram';
-import { TelegramNotificationPayload } from '../../src/types';
+import { sendNotification } from '../../src/lib/telegram.js';
+import { TelegramNotificationPayload } from '../../src/types.js';
 
 // Trace: SPEC-TELEGRAM-NOTIFICATION-001, SPEC-TELEGRAM-IMPROVEMENTS-001
 

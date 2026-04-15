@@ -1,220 +1,212 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getProcessedRecord, putProcessedRecord, getMaxProcessedId, updateMaxProcessedId, type StateEnv } from '../../src/lib/state';
-import type { ProcessedRecord } from '../../src/types';
-
-// Mock KV namespace
-const mockKV = {
-  get: vi.fn(),
-  put: vi.fn(),
-};
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
+import {
+  openDatabase,
+  getProcessedRecord,
+  putProcessedRecord,
+  getMaxProcessedId,
+  updateMaxProcessedId,
+  type StateEnv,
+} from '../../src/lib/state.js';
+import type { ProcessedRecord } from '../../src/types.js';
 
 describe('State Module', () => {
-  let mockEnv: StateEnv;
+  let db: Database.Database;
+  let env: StateEnv;
 
   beforeEach(() => {
-    mockEnv = {
-      PROCESSED_STORE: mockKV as any,
-    };
-
-    vi.clearAllMocks();
+    // Each test gets a fresh in-memory database
+    db = new Database(':memory:');
+    db.pragma('journal_mode = WAL');
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS processed_items (
+        ntt_no       TEXT PRIMARY KEY,
+        event_id     TEXT NOT NULL,
+        processed_at TEXT NOT NULL,
+        hash         TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS meta (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
+    env = { db };
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    db.close();
+  });
+
+  describe('openDatabase', () => {
+    it('should create tables and return a Database instance', () => {
+      const tmpDb = openDatabase(':memory:');
+      try {
+        const tables = tmpDb
+          .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+          .all() as Array<{ name: string }>;
+        const names = tables.map((r) => r.name);
+        expect(names).toContain('processed_items');
+        expect(names).toContain('meta');
+      } finally {
+        tmpDb.close();
+      }
+    });
   });
 
   describe('getProcessedRecord', () => {
     it('should return processed record when found', async () => {
-      const mockRecord: ProcessedRecord = {
+      const record: ProcessedRecord = {
         eventId: 'test-event',
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
       };
+      db.prepare(
+        'INSERT INTO processed_items (ntt_no, event_id, processed_at, hash) VALUES (?, ?, ?, ?)'
+      ).run('123', record.eventId, record.processedAt, record.hash);
 
-      mockKV.get.mockResolvedValue(mockRecord);
+      const result = await getProcessedRecord(env, '123');
 
-      const result = await getProcessedRecord(mockEnv, 'test-id');
-
-      expect(result).toEqual(mockRecord);
-      expect(mockKV.get).toHaveBeenCalledWith('test-id', 'json');
+      expect(result).toEqual(record);
     });
 
     it('should return null when key not found', async () => {
-      mockKV.get.mockResolvedValue(null);
-
-      const result = await getProcessedRecord(mockEnv, 'nonexistent-id');
-
+      const result = await getProcessedRecord(env, 'nonexistent-id');
       expect(result).toBeNull();
-      expect(mockKV.get).toHaveBeenCalledWith('nonexistent-id', 'json');
-    });
-
-    it('should return null when KV returns undefined', async () => {
-      mockKV.get.mockResolvedValue(undefined);
-
-      const result = await getProcessedRecord(mockEnv, 'undefined-id');
-
-      expect(result).toBeNull();
-      expect(mockKV.get).toHaveBeenCalledWith('undefined-id', 'json');
     });
   });
 
   describe('putProcessedRecord', () => {
     it('should store processed record successfully', async () => {
-      const mockRecord: ProcessedRecord = {
+      const record: ProcessedRecord = {
         eventId: 'test-event',
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
       };
 
-      mockKV.put.mockResolvedValue(undefined);
+      await putProcessedRecord(env, '123', record);
 
-      await putProcessedRecord(mockEnv, 'test-id', mockRecord);
-
-      expect(mockKV.put).toHaveBeenCalledWith('test-id', JSON.stringify(mockRecord));
+      const result = await getProcessedRecord(env, '123');
+      expect(result).toEqual(record);
     });
 
-    it('should handle complex record data', async () => {
-      const mockRecord: ProcessedRecord = {
-        eventId: 'complex-event-id',
+    it('should overwrite existing record (upsert)', async () => {
+      const original: ProcessedRecord = {
+        eventId: 'original-event',
         nttNo: '456',
-        processedAt: '2023-12-31T23:59:59Z',
-        hash: 'complex-hash-with-special-chars',
+        processedAt: '2023-01-01T00:00:00Z',
+        hash: 'original-hash',
+      };
+      const updated: ProcessedRecord = {
+        eventId: 'updated-event',
+        nttNo: '456',
+        processedAt: '2023-06-15T12:00:00Z',
+        hash: 'updated-hash',
       };
 
-      mockKV.put.mockResolvedValue(undefined);
+      await putProcessedRecord(env, '456', original);
+      await putProcessedRecord(env, '456', updated);
 
-      await putProcessedRecord(mockEnv, 'complex-id', mockRecord);
-
-      expect(mockKV.put).toHaveBeenCalledWith('complex-id', JSON.stringify(mockRecord));
+      const result = await getProcessedRecord(env, '456');
+      expect(result).toEqual(updated);
     });
   });
 
   describe('round-trip operations', () => {
     it('should store and retrieve record correctly', async () => {
-      const mockRecord: ProcessedRecord = {
+      const record: ProcessedRecord = {
         eventId: 'round-trip-event',
         nttNo: '789',
         processedAt: '2023-06-15T12:30:45Z',
         hash: 'round-trip-hash',
       };
 
-      // Mock successful put
-      mockKV.put.mockResolvedValue(undefined);
-
-      // Store the record
-      await putProcessedRecord(mockEnv, 'round-trip-id', mockRecord);
-
-      // Mock successful get
-      mockKV.get.mockResolvedValue(mockRecord);
-
-      // Retrieve the record
-      const retrieved = await getProcessedRecord(mockEnv, 'round-trip-id');
-
-      expect(retrieved).toEqual(mockRecord);
-      expect(mockKV.put).toHaveBeenCalledWith('round-trip-id', JSON.stringify(mockRecord));
-      expect(mockKV.get).toHaveBeenCalledWith('round-trip-id', 'json');
+      await putProcessedRecord(env, '789', record);
+      const retrieved = await getProcessedRecord(env, '789');
+      expect(retrieved).toEqual(record);
     });
   });
 
   describe('getMaxProcessedId', () => {
     it('should return stored max ID', async () => {
-      mockKV.get.mockResolvedValue('5000');
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '5000')").run();
 
-      const result = await getMaxProcessedId(mockEnv);
-
+      const result = await getMaxProcessedId(env);
       expect(result).toBe(5000);
-      expect(mockKV.get).toHaveBeenCalledWith('_max_processed_id', 'text');
     });
 
     it('should return 0 when no max ID is stored', async () => {
-      mockKV.get.mockResolvedValue(null);
-
-      const result = await getMaxProcessedId(mockEnv);
-
-      expect(result).toBe(0);
-      expect(mockKV.get).toHaveBeenCalledWith('_max_processed_id', 'text');
-    });
-
-    it('should return 0 when max ID is undefined', async () => {
-      mockKV.get.mockResolvedValue(undefined);
-
-      const result = await getMaxProcessedId(mockEnv);
-
+      const result = await getMaxProcessedId(env);
       expect(result).toBe(0);
     });
 
     it('should parse large ID values correctly', async () => {
-      mockKV.get.mockResolvedValue('999999999');
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '999999999')").run();
 
-      const result = await getMaxProcessedId(mockEnv);
-
+      const result = await getMaxProcessedId(env);
       expect(result).toBe(999999999);
     });
 
     it('should return 0 when stored value is not a number', async () => {
-      mockKV.get.mockResolvedValue('not-a-number');
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', 'not-a-number')").run();
 
-      const result = await getMaxProcessedId(mockEnv);
-
+      const result = await getMaxProcessedId(env);
       expect(result).toBe(0);
     });
   });
 
   describe('updateMaxProcessedId', () => {
     it('should update max ID when new ID is larger', async () => {
-      mockKV.get.mockResolvedValue('5000');
-      mockKV.put.mockResolvedValue(undefined);
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '5000')").run();
 
-      await updateMaxProcessedId(mockEnv, '5100');
+      await updateMaxProcessedId(env, '5100');
 
-      expect(mockKV.put).toHaveBeenCalledWith('_max_processed_id', '5100');
+      const result = await getMaxProcessedId(env);
+      expect(result).toBe(5100);
     });
 
     it('should not update when new ID is smaller than current max', async () => {
-      mockKV.get.mockResolvedValue('5000');
-      mockKV.put.mockResolvedValue(undefined);
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '5000')").run();
 
-      await updateMaxProcessedId(mockEnv, '4999');
+      await updateMaxProcessedId(env, '4999');
 
-      expect(mockKV.put).not.toHaveBeenCalled();
+      const result = await getMaxProcessedId(env);
+      expect(result).toBe(5000);
     });
 
     it('should update when current max is 0 (first time)', async () => {
-      mockKV.get.mockResolvedValue(null);
-      mockKV.put.mockResolvedValue(undefined);
+      await updateMaxProcessedId(env, '100');
 
-      await updateMaxProcessedId(mockEnv, '100');
-
-      expect(mockKV.put).toHaveBeenCalledWith('_max_processed_id', '100');
+      const result = await getMaxProcessedId(env);
+      expect(result).toBe(100);
     });
 
-    it('should handle equal IDs correctly (not update)', async () => {
-      mockKV.get.mockResolvedValue('5000');
-      mockKV.put.mockResolvedValue(undefined);
+    it('should not update when equal IDs are given', async () => {
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '5000')").run();
 
-      await updateMaxProcessedId(mockEnv, '5000');
+      await updateMaxProcessedId(env, '5000');
 
-      expect(mockKV.put).not.toHaveBeenCalled();
+      const result = await getMaxProcessedId(env);
+      expect(result).toBe(5000);
     });
 
     it('should update max ID for large values', async () => {
-      mockKV.get.mockResolvedValue('999999998');
-      mockKV.put.mockResolvedValue(undefined);
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '999999998')").run();
 
-      await updateMaxProcessedId(mockEnv, '999999999');
+      await updateMaxProcessedId(env, '999999999');
 
-      expect(mockKV.put).toHaveBeenCalledWith('_max_processed_id', '999999999');
+      const result = await getMaxProcessedId(env);
+      expect(result).toBe(999999999);
     });
 
     it('should not update and not throw when new ID is not a number', async () => {
-      mockKV.get.mockResolvedValue('5000');
-      mockKV.put.mockResolvedValue(undefined);
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '5000')").run();
 
-      await updateMaxProcessedId(mockEnv, 'not-a-number');
+      await updateMaxProcessedId(env, 'not-a-number');
 
-      expect(mockKV.put).not.toHaveBeenCalled();
+      const result = await getMaxProcessedId(env);
+      expect(result).toBe(5000);
     });
   });
 });

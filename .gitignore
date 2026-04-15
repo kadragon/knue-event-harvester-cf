@@ -5,6 +5,10 @@ node_modules/
 dist/
 .wrangler/
 
+# Local runtime data
+data/
+logs/
+
 # Logs and temp
 npm-debug.log*
 pnpm-debug.log*

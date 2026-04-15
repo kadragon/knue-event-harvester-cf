@@ -1,16 +1,46 @@
-import type { ProcessedRecord } from "../types";
-import type { KVNamespace } from "@cloudflare/workers-types";
+import type { ProcessedRecord } from "../types.js";
+import Database from "better-sqlite3";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 export interface StateEnv {
-  PROCESSED_STORE: KVNamespace;
+  db: Database.Database;
 }
 
 const MAX_PROCESSED_ID_KEY = "_max_processed_id";
 
+export function openDatabase(dbPath: string): Database.Database {
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const db = new Database(dbPath);
+  db.pragma("journal_mode = WAL");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS processed_items (
+      ntt_no       TEXT PRIMARY KEY,
+      event_id     TEXT NOT NULL,
+      processed_at TEXT NOT NULL,
+      hash         TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS meta (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+  return db;
+}
+
 export async function getProcessedRecord(env: StateEnv, id: string): Promise<ProcessedRecord | null> {
-  const raw = await env.PROCESSED_STORE.get(id, "json");
-  if (!raw) return null;
-  return raw as ProcessedRecord;
+  const row = env.db
+    .prepare<[string], { ntt_no: string; event_id: string; processed_at: string; hash: string }>(
+      "SELECT ntt_no, event_id, processed_at, hash FROM processed_items WHERE ntt_no = ?"
+    )
+    .get(id);
+  if (!row) return null;
+  return {
+    nttNo: row.ntt_no,
+    eventId: row.event_id,
+    processedAt: row.processed_at,
+    hash: row.hash,
+  };
 }
 
 export async function putProcessedRecord(
@@ -18,13 +48,24 @@ export async function putProcessedRecord(
   id: string,
   record: ProcessedRecord,
 ): Promise<void> {
-  await env.PROCESSED_STORE.put(id, JSON.stringify(record));
+  env.db
+    .prepare(
+      `INSERT INTO processed_items (ntt_no, event_id, processed_at, hash)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(ntt_no) DO UPDATE SET
+         event_id     = excluded.event_id,
+         processed_at = excluded.processed_at,
+         hash         = excluded.hash`
+    )
+    .run(id, record.eventId, record.processedAt, record.hash);
 }
 
 export async function getMaxProcessedId(env: StateEnv): Promise<number> {
-  const raw = await env.PROCESSED_STORE.get(MAX_PROCESSED_ID_KEY, "text");
-  if (!raw) return 0;
-  return Number.parseInt(raw, 10) || 0;
+  const row = env.db
+    .prepare<[string], { value: string }>("SELECT value FROM meta WHERE key = ?")
+    .get(MAX_PROCESSED_ID_KEY);
+  if (!row) return 0;
+  return Number.parseInt(row.value, 10) || 0;
 }
 
 export async function updateMaxProcessedId(env: StateEnv, id: string): Promise<void> {
@@ -33,33 +74,18 @@ export async function updateMaxProcessedId(env: StateEnv, id: string): Promise<v
     console.warn(`updateMaxProcessedId called with non-numeric id: "${id}"`);
     return;
   }
-  const currentMax = await getMaxProcessedId(env);
-  if (numId > currentMax) {
-    await env.PROCESSED_STORE.put(MAX_PROCESSED_ID_KEY, numId.toString());
-  }
+  env.db.transaction(() => {
+    const row = env.db
+      .prepare<[string], { value: string }>("SELECT value FROM meta WHERE key = ?")
+      .get(MAX_PROCESSED_ID_KEY);
+    const currentMax = row ? Number.parseInt(row.value, 10) || 0 : 0;
+    if (numId > currentMax) {
+      env.db
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+        )
+        .run(MAX_PROCESSED_ID_KEY, numId.toString());
+    }
+  })();
 }
-
-/**
- * IMPLEMENTATION NOTE: Race Condition & Data Loss Safeguards
- *
- * Batch Completion Strategy:
- * - maxProcessedId is updated ONLY after the entire batch completes
- * - Failed items are NOT marked as processed → guaranteed retry on next run
- * - Per-item records track individual processing (backward compatibility)
- *
- * Data Loss Prevention (GUARANTEED):
- * ✓ If any item fails during processing, its ID is NOT added to maxSuccessfulId
- * ✓ maxProcessedId advances only when the batch completes without errors
- * ✓ Failed items are retried in subsequent scheduled runs
- * ✓ Non-numeric IDs use per-item KV records (always retried if failed)
- *
- * Race Condition Considerations:
- * - The get -> compare -> put sequence is NOT atomic
- * - This is acceptable because the worker runs as a scheduled singleton
- * - If reused in concurrent contexts (HTTP handlers), implement:
- *   1. KV conditional write operations
- *   2. Atomic batch commits
- *   3. Optimistic locking with versioning
- *
- * Result: Zero data loss under scheduled-only operation model
- */

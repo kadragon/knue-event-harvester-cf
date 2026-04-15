@@ -1,45 +1,36 @@
-import { generateEventInfos, generateSummary, type AiEnv } from "./lib/ai";
-import type {
-  ScheduledController,
-  ExecutionContext,
-} from "@cloudflare/workers-types";
+import { extractTextFromImage, generateEventInfos, generateSummary, type AiEnv } from "./lib/ai.js";
 import {
   obtainAccessToken,
   listEvents,
   createEvent,
   type CalendarEnv,
   type GoogleCalendarEvent,
-} from "./lib/calendar";
-import { isDuplicate, computeHash } from "./lib/dedupe";
-import { sendNotification } from "./lib/telegram";
+} from "./lib/calendar.js";
+import { isDuplicate, computeHash } from "./lib/dedupe.js";
+import { sendNotification } from "./lib/telegram.js";
 
-import { parseRss } from "./lib/rss";
+import { parseRss } from "./lib/rss.js";
 import {
   getProcessedRecord,
   putProcessedRecord,
   getMaxProcessedId,
   updateMaxProcessedId,
+  openDatabase,
   type StateEnv,
-} from "./lib/state";
+} from "./lib/state.js";
 import type {
   CalendarEventInput,
   ProcessedRecord,
   RssItem,
   AiSummary,
-} from "./types";
-import { deduplicateLinks, buildAttachmentFromFile } from "./lib/utils";
+  PreviewContent,
+} from "./types.js";
+import { deduplicateLinks, buildAttachmentFromFile } from "./lib/utils.js";
+import { getFileType } from "./lib/preview.js";
 
 interface Env extends StateEnv, CalendarEnv, AiEnv {
-  OPENAI_API_KEY: string;
-  OPENAI_CONTENT_MODEL: string;
-  OPENAI_VISION_MODEL?: string;
-  CLOUDFLARE_ACCOUNT_ID?: string;
-  CLOUDFLARE_AI_GATEWAY_NAME?: string;
-  CLOUDFLARE_AI_GATEWAY_AUTH?: string;
   SIMILARITY_THRESHOLD?: string;
   LOOKBACK_DAYS?: string;
-  GOOGLE_CALENDAR_ID: string;
-  GOOGLE_SERVICE_ACCOUNT_JSON: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_USER_ID?: string;
 }
@@ -217,6 +208,23 @@ export function splitLongEvent(eventInput: CalendarEventInput): CalendarEventInp
   return [startEvent, endEvent];
 }
 
+async function fetchImageAsBase64(url: string): Promise<PreviewContent | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.warn(`Image fetch failed (${response.status}): ${url}`);
+      return null;
+    }
+    const contentType = response.headers.get("content-type") ?? "image/jpeg";
+    const buffer = await response.arrayBuffer();
+    const imageBase64 = Buffer.from(buffer).toString("base64");
+    return { sourceType: "image", imageBase64, contentType };
+  } catch (error) {
+    console.warn("Failed to fetch image", url, error);
+    return null;
+  }
+}
+
 export async function processNewItem(
   env: Env,
   item: RssItem,
@@ -224,11 +232,23 @@ export async function processNewItem(
   existingEvents: GoogleCalendarEvent[],
   similarityThreshold: number
 ): Promise<GoogleCalendarEvent[]> {
+  // OCR: 첨부 이미지가 있으면 vision 모델로 텍스트 추출
+  let previewText: string | undefined;
+  if (item.attachment?.url && getFileType(item.attachment.filename) === "image") {
+    const imageContent = await fetchImageAsBase64(item.attachment.url);
+    if (imageContent) {
+      previewText = await extractTextFromImage(env, imageContent);
+      if (previewText) {
+        console.log(`OCR extracted ${previewText.length} chars from image for item ${item.id}`);
+      }
+    }
+  }
+
   const [summary, eventInputs] = await Promise.all([
     generateSummary(env, {
       title: item.title,
       description: item.descriptionHtml,
-      previewText: undefined,
+      previewText,
       attachmentText: item.attachment
         ? item.attachment.filename
           ? `첨부파일: ${item.attachment.filename}`
@@ -237,7 +257,7 @@ export async function processNewItem(
       link: item.link,
       pubDate: item.pubDate,
     }),
-    generateEventInfos(env, item),
+    generateEventInfos(env, item, previewText),
   ]);
   const createdEvents: GoogleCalendarEvent[] = [];
 
@@ -358,7 +378,7 @@ export async function processNewItem(
   return createdEvents;
 }
 
-async function run(env: Env): Promise<{ processed: number; created: number }> {
+export async function run(env: Env): Promise<{ processed: number; created: number }> {
   const rssXml = await fetchRssFeed();
   const items = parseRss(rssXml);
   const accessToken = await obtainAccessToken(env);
@@ -445,16 +465,41 @@ async function run(env: Env): Promise<{ processed: number; created: number }> {
   return { processed, created };
 }
 
-export default {
-  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(
-      run(env)
-        .then((stats) => {
-          console.log("Scheduled run complete", stats);
-        })
-        .catch((error) => {
-          console.error("Scheduled run failed", error);
-        })
-    );
-  },
-};
+async function main() {
+  const { config } = await import("dotenv");
+  config();
+
+  const dbPath = process.env.DATABASE_PATH ?? "./data/state.db";
+  const db = openDatabase(dbPath);
+
+  const env: Env = {
+    db,
+    OLLAMA_HOST: process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434",
+    OLLAMA_CONTENT_MODEL: process.env.OLLAMA_CONTENT_MODEL ?? "llama3.1:8b",
+    OLLAMA_VISION_MODEL: process.env.OLLAMA_VISION_MODEL,
+    GOOGLE_CALENDAR_ID: process.env.GOOGLE_CALENDAR_ID ?? "",
+    GOOGLE_SERVICE_ACCOUNT_JSON: process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? "",
+    SIMILARITY_THRESHOLD: process.env.SIMILARITY_THRESHOLD,
+    LOOKBACK_DAYS: process.env.LOOKBACK_DAYS,
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_USER_ID: process.env.TELEGRAM_USER_ID,
+  };
+
+  try {
+    const stats = await run(env);
+    console.log("Run complete", stats);
+  } finally {
+    db.close();
+  }
+}
+
+const isMain = process.argv[1]
+  ? new URL(import.meta.url).pathname === process.argv[1]
+  : false;
+
+if (isMain) {
+  main().catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}
