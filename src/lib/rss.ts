@@ -1,5 +1,5 @@
 import { DOMParser as XmldomParser } from "@xmldom/xmldom";
-import type { RssItem } from "../types";
+import type { RssItem } from "../types.js";
 
 function textContent(node: Element | null | undefined): string {
   if (!node) return "";

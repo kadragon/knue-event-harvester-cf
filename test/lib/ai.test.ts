@@ -1,21 +1,36 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { extractTextFromImage, generateSummary, generateEventInfos, type AiEnv } from '../../src/lib/ai';
-import type { PreviewContent, RssItem } from '../../src/types';
+import { extractTextFromImage, generateSummary, generateEventInfos, type AiEnv } from '../../src/lib/ai.js';
+import type { PreviewContent, RssItem } from '../../src/types.js';
 
 // Mock fetch globally
 const fetchMock = vi.fn();
 global.fetch = fetchMock;
+
+// Ollama response format: { message: { content: "..." } }
+function ollamaOk(content: unknown) {
+  return {
+    ok: true,
+    json: () => Promise.resolve({ message: { content: JSON.stringify(content) } }),
+  };
+}
+
+function ollamaError(status = 500, body = 'Internal Server Error') {
+  return {
+    ok: false,
+    status,
+    text: () => Promise.resolve(body),
+  };
+}
 
 describe('AI Module', () => {
   let mockEnv: AiEnv;
 
   beforeEach(() => {
     mockEnv = {
-      OPENAI_API_KEY: 'test-api-key',
-      OPENAI_CONTENT_MODEL: 'gpt-4',
-      OPENAI_VISION_MODEL: 'gpt-4-vision-preview',
+      OLLAMA_HOST: 'http://127.0.0.1:11434',
+      OLLAMA_CONTENT_MODEL: 'llama3.1:8b',
+      OLLAMA_VISION_MODEL: 'llama3.2-vision',
     };
-
     vi.clearAllMocks();
     fetchMock.mockReset();
   });
@@ -26,23 +41,12 @@ describe('AI Module', () => {
 
   describe('generateSummary', () => {
     it('should generate summary successfully', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              summary: '공지사항 요약',
-              highlights: ['중요 포인트 1', '중요 포인트 2'],
-              actionItems: ['행동 항목 1'],
-              links: ['http://example.com'],
-            }),
-          },
-        }],
-      };
-
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
+      fetchMock.mockResolvedValueOnce(ollamaOk({
+        summary: '공지사항 요약',
+        highlights: ['중요 포인트 1', '중요 포인트 2'],
+        actionItems: ['행동 항목 1'],
+        links: ['http://example.com'],
+      }));
 
       const result = await generateSummary(mockEnv, {
         title: '테스트 공지',
@@ -61,58 +65,16 @@ describe('AI Module', () => {
       });
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      const callArgs = fetchMock.mock.calls[0];
-      expect(callArgs[0]).toBe('https://api.openai.com/v1/chat/completions');
-      expect(callArgs[1].headers.Authorization).toBe('Bearer test-api-key');
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('http://127.0.0.1:11434/api/chat');
+      const body = JSON.parse(init.body);
+      expect(body.model).toBe('llama3.1:8b');
+      expect(body.stream).toBe(false);
+      expect(body.format).toBeDefined();
     });
 
-    it('should use Cloudflare AI Gateway when configured', async () => {
-      const accountId = 'test-account';
-      const gatewayName = 'test-gateway';
-      const gatewayToken = 'gateway-token';
-
-      const gatewayEnv = {
-        ...mockEnv,
-        CLOUDFLARE_ACCOUNT_ID: accountId,
-        CLOUDFLARE_AI_GATEWAY_NAME: gatewayName,
-        CLOUDFLARE_AI_GATEWAY_AUTH: gatewayToken,
-      };
-
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          choices: [{
-            message: {
-              content: JSON.stringify({
-                summary: '게이트웨이 요약',
-                highlights: [],
-                actionItems: [],
-                links: [],
-              }),
-            },
-          }],
-        }),
-      });
-
-      await generateSummary(gatewayEnv, {
-        title: '테스트',
-        description: '내용',
-        link: 'http://example.com',
-        pubDate: '2023-01-01',
-      });
-
-      const expectedUrl = `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayName}/openai/chat/completions`;
-      const callArgs = fetchMock.mock.calls[0];
-      expect(callArgs[0]).toBe(expectedUrl);
-      expect(callArgs[1].headers['cf-aig-authorization']).toBe(`Bearer ${gatewayToken}`);
-    });
-
-    it('should return fallback on API error', async () => {
-      fetchMock.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Internal Server Error'),
-      });
+    it('should return fallback on Ollama error', async () => {
+      fetchMock.mockResolvedValueOnce(ollamaError());
 
       const result = await generateSummary(mockEnv, {
         title: '테스트',
@@ -132,13 +94,7 @@ describe('AI Module', () => {
     it('should handle malformed JSON response', async () => {
       fetchMock.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({
-          choices: [{
-            message: {
-              content: 'invalid json',
-            },
-          }],
-        }),
+        json: () => Promise.resolve({ message: { content: 'invalid json' } }),
       });
 
       const result = await generateSummary(mockEnv, {
@@ -157,20 +113,11 @@ describe('AI Module', () => {
     });
 
     it('should handle partial JSON response', async () => {
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          choices: [{
-            message: {
-              content: JSON.stringify({
-                summary: '요약',
-                highlights: 'not an array', // Invalid type
-                actionItems: ['valid item'],
-              }),
-            },
-          }],
-        }),
-      });
+      fetchMock.mockResolvedValueOnce(ollamaOk({
+        summary: '요약',
+        highlights: 'not an array', // Invalid type
+        actionItems: ['valid item'],
+      }));
 
       const result = await generateSummary(mockEnv, {
         title: '테스트',
@@ -181,29 +128,16 @@ describe('AI Module', () => {
 
       expect(result).toEqual({
         summary: '요약',
-        highlights: [], // Should be sanitized to empty array
+        highlights: [],
         actionItems: ['valid item'],
-        links: [], // Should default to empty array
+        links: [],
       });
     });
   });
 
   describe('extractTextFromImage', () => {
     it('should extract text from image successfully', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              extractedText: '추출된 텍스트',
-            }),
-          },
-        }],
-      };
-
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
+      fetchMock.mockResolvedValueOnce(ollamaOk({ extractedText: '추출된 텍스트' }));
 
       const preview: PreviewContent = {
         sourceType: 'image',
@@ -216,39 +150,37 @@ describe('AI Module', () => {
       expect(result).toBe('추출된 텍스트');
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
-      const callArgs = fetchMock.mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      expect(body.model).toBe('gpt-4-vision-preview'); // Should use vision model
-      expect(body.messages[1].content[1].image_url.url).toContain('data:image/png;base64,base64-image-data');
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('http://127.0.0.1:11434/api/chat');
+      const body = JSON.parse(init.body);
+      expect(body.model).toBe('llama3.2-vision');
+      // Ollama native vision format: images[] on the user message
+      const userMessage = body.messages[1];
+      expect(userMessage.images).toContain('base64-image-data');
+      expect(typeof userMessage.content).toBe('string');
     });
 
-    it('should use content model when vision model not specified', async () => {
-      const envWithoutVision = {
-        OPENAI_API_KEY: 'test-key',
-        OPENAI_CONTENT_MODEL: 'gpt-4',
+    it('should fall back to OLLAMA_CONTENT_MODEL when OLLAMA_VISION_MODEL is not set', async () => {
+      const envWithoutVision: AiEnv = {
+        OLLAMA_HOST: 'http://127.0.0.1:11434',
+        OLLAMA_CONTENT_MODEL: 'llama3.1:8b',
+        // No OLLAMA_VISION_MODEL — should fall back to content model
       };
 
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          choices: [{
-            message: {
-              content: JSON.stringify({ extractedText: 'text' }),
-            },
-          }],
-        }),
-      });
+      fetchMock.mockResolvedValueOnce(ollamaOk({ extractedText: 'fallback text' }));
 
       const preview: PreviewContent = {
         sourceType: 'image',
         imageBase64: 'data',
       };
 
-      await extractTextFromImage(envWithoutVision, preview);
+      const result = await extractTextFromImage(envWithoutVision, preview);
 
-      const callArgs = fetchMock.mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      expect(body.model).toBe('gpt-4'); // Should fallback to content model
+      expect(result).toBe('fallback text');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse(init.body);
+      expect(body.model).toBe('llama3.1:8b'); // Falls back to content model
     });
 
     it('should return undefined for non-image content', async () => {
@@ -265,7 +197,6 @@ describe('AI Module', () => {
     it('should return undefined for image without base64 data', async () => {
       const preview: PreviewContent = {
         sourceType: 'image',
-        // No imageBase64
       };
 
       const result = await extractTextFromImage(mockEnv, preview);
@@ -273,12 +204,8 @@ describe('AI Module', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('should return undefined on API error', async () => {
-      fetchMock.mockResolvedValueOnce({
-        ok: false,
-        status: 429,
-        text: () => Promise.resolve('Rate limited'),
-      });
+    it('should return undefined on Ollama error', async () => {
+      fetchMock.mockResolvedValueOnce(ollamaError(429, 'Rate limited'));
 
       const preview: PreviewContent = {
         sourceType: 'image',
@@ -292,13 +219,7 @@ describe('AI Module', () => {
     it('should handle malformed OCR JSON response', async () => {
       fetchMock.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({
-          choices: [{
-            message: {
-              content: 'not json',
-            },
-          }],
-        }),
+        json: () => Promise.resolve({ message: { content: 'not json' } }),
       });
 
       const preview: PreviewContent = {
@@ -311,16 +232,7 @@ describe('AI Module', () => {
     });
 
     it('should handle OCR response without extractedText', async () => {
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          choices: [{
-            message: {
-              content: JSON.stringify({ otherField: 'value' }),
-            },
-          }],
-        }),
-      });
+      fetchMock.mockResolvedValueOnce(ollamaOk({ otherField: 'value' }));
 
       const preview: PreviewContent = {
         sourceType: 'image',
@@ -346,27 +258,18 @@ describe('AI Module', () => {
     });
 
     it('should generate event infos with single event', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              events: [
-                {
-                  title: '수강신청',
-                  description: '봄학기 수강신청',
-                  startDate: '2025-11-01',
-                  endDate: '2025-11-03',
-                },
-              ],
-            }),
+      fetchMock.mockResolvedValueOnce(ollamaOk({
+        events: [
+          {
+            title: '수강신청',
+            description: '봄학기 수강신청',
+            startDate: '2025-11-01',
+            endDate: '2025-11-03',
+            startTime: null,
+            endTime: null,
           },
-        }],
-      };
-
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
+        ],
+      }));
 
       const result = await generateEventInfos(mockEnv, mockItem);
 
@@ -382,35 +285,26 @@ describe('AI Module', () => {
     });
 
     it('should generate event infos with multiple events', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              events: [
-                {
-                  title: '행사 1',
-                  description: '설명 1',
-                  startDate: '2025-11-01',
-                  endDate: '2025-11-01',
-                },
-                {
-                  title: '행사 2',
-                  description: '설명 2',
-                  startDate: '2025-11-10',
-                  endDate: '2025-11-12',
-                  startTime: '09:00',
-                  endTime: '17:00',
-                },
-              ],
-            }),
+      fetchMock.mockResolvedValueOnce(ollamaOk({
+        events: [
+          {
+            title: '행사 1',
+            description: '설명 1',
+            startDate: '2025-11-01',
+            endDate: '2025-11-01',
+            startTime: null,
+            endTime: null,
           },
-        }],
-      };
-
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
+          {
+            title: '행사 2',
+            description: '설명 2',
+            startDate: '2025-11-10',
+            endDate: '2025-11-12',
+            startTime: '09:00',
+            endTime: '17:00',
+          },
+        ],
+      }));
 
       const result = await generateEventInfos(mockEnv, mockItem);
 
@@ -420,26 +314,9 @@ describe('AI Module', () => {
     });
 
     it('should use pubDate as fallback when startDate not provided', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              events: [
-                {
-                  title: '행사',
-                  description: '설명',
-                  // No startDate provided
-                },
-              ],
-            }),
-          },
-        }],
-      };
-
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
+      fetchMock.mockResolvedValueOnce(ollamaOk({
+        events: [{ title: '행사', description: '설명' }],
+      }));
 
       const result = await generateEventInfos(mockEnv, mockItem);
 
@@ -447,157 +324,51 @@ describe('AI Module', () => {
       expect(result[0].endDate).toBe(mockItem.pubDate);
     });
 
-    it('should filter out events without title or description', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              events: [
-                {
-                  title: '유효한 행사',
-                  description: '설명',
-                  startDate: '2025-11-01',
-                },
-                {
-                  // Missing title gets filled with fallback
-                  description: '설명만 있음',
-                  startDate: '2025-11-02',
-                },
-                {
-                  title: '제목만 있음',
-                  // Missing description gets filled with fallback
-                  startDate: '2025-11-03',
-                },
-              ],
-            }),
-          },
-        }],
-      };
+    it('should throw on Ollama error', async () => {
+      fetchMock.mockResolvedValueOnce(ollamaError());
 
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
-
-      const result = await generateEventInfos(mockEnv, mockItem);
-
-      // All 3 events pass filtering since title and description are filled with fallback
-      expect(result).toHaveLength(3);
-      expect(result[0].title).toBe('유효한 행사');
-      expect(result[1].title).toBe('제목 없음'); // Fallback title
-      expect(result[2].description).toBe('설명 없음'); // Fallback description
+      await expect(generateEventInfos(mockEnv, mockItem)).rejects.toThrow('Ollama request failed');
     });
 
-    it('should return fallback event on API error', async () => {
-      fetchMock.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Internal Server Error'),
-      });
-
-      // Mock fallback to direct OpenAI also failing
-      fetchMock.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Direct OpenAI also failed'),
-      });
-
-      const result = await generateEventInfos(mockEnv, mockItem);
-
-      expect(result).toHaveLength(1);
-      expect(result[0].title).toBe('제목 없음'); // Actual fallback value
-      expect(result[0].description).toBe('설명 없음'); // Actual fallback value
-    });
-
-    it('should handle malformed JSON response and return fallback', async () => {
+    it('should handle malformed JSON response and return empty array', async () => {
       fetchMock.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({
-          choices: [{
-            message: {
-              content: 'invalid json',
-            },
-          }],
-        }),
+        json: () => Promise.resolve({ message: { content: 'invalid json' } }),
       });
 
       const result = await generateEventInfos(mockEnv, mockItem);
 
-      expect(result).toHaveLength(1);
-      expect(result[0].title).toBe('제목 없음'); // Actual fallback value
-      expect(result[0].description).toBe('설명 없음'); // Actual fallback value
+      expect(result).toHaveLength(0);
     });
 
     it('should return empty array when events array is missing from response', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              title: '단일 행사',
-              description: '배열이 아닌 단일 객체',
-              startDate: '2025-11-15',
-              endDate: '2025-11-15',
-            }),
-          },
-        }],
-      };
-
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
+      fetchMock.mockResolvedValueOnce(ollamaOk({
+        title: '단일 행사',
+        description: '배열이 아닌 단일 객체',
+      }));
 
       const result = await generateEventInfos(mockEnv, mockItem);
-
       expect(result).toHaveLength(0);
     });
 
-    it('should return empty array when AI returns empty events array for non-event announcement', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              events: [],
-            }),
-          },
-        }],
-      };
-
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
+    it('should return empty array when AI returns empty events array', async () => {
+      fetchMock.mockResolvedValueOnce(ollamaOk({ events: [] }));
 
       const result = await generateEventInfos(mockEnv, mockItem);
-
       expect(result).toHaveLength(0);
     });
 
-    it('should request with correct prompt structure', async () => {
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          choices: [{
-            message: {
-              content: JSON.stringify({
-                events: [{
-                  title: 'test',
-                  description: 'test',
-                }],
-              }),
-            },
-          }],
-        }),
-      });
+    it('should call Ollama /api/chat with correct structure', async () => {
+      fetchMock.mockResolvedValueOnce(ollamaOk({ events: [{ title: 'test', description: 'test' }] }));
 
       await generateEventInfos(mockEnv, mockItem);
 
-      const callArgs = fetchMock.mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-
-      expect(body.model).toBe(mockEnv.OPENAI_CONTENT_MODEL);
-      expect(body.response_format.type).toBe('json_schema');
-      expect(body.temperature).toBeUndefined();
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('http://127.0.0.1:11434/api/chat');
+      const body = JSON.parse(init.body);
+      expect(body.model).toBe(mockEnv.OLLAMA_CONTENT_MODEL);
+      expect(body.stream).toBe(false);
+      expect(body.format).toBeDefined();
       expect(body.messages[1].content).toContain(mockItem.title);
       expect(body.messages[1].content).toContain(mockItem.pubDate);
     });
@@ -610,29 +381,14 @@ describe('AI Module', () => {
           descriptionHtml: '<p>Use &amp;lt;br&amp;gt; for breaks</p>',
         };
 
-        fetchMock.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            choices: [{
-              message: {
-                content: JSON.stringify({
-                  events: [{
-                    title: 'test',
-                    description: 'test',
-                  }],
-                }),
-              },
-            }],
-          }),
-        });
+        fetchMock.mockResolvedValueOnce(ollamaOk({ events: [{ title: 'test', description: 'test' }] }));
 
         await generateEventInfos(mockEnv, itemWithDoubleEncoded);
 
-        const callArgs = fetchMock.mock.calls[0];
-        const body = JSON.parse(callArgs[1].body);
+        const [, init] = fetchMock.mock.calls[0];
+        const body = JSON.parse(init.body);
         const promptContent = body.messages[1].content;
 
-        // The prompt should contain decoded once: &lt;br&gt; not <br>
         expect(promptContent).toContain('&lt;br&gt;');
         expect(promptContent).not.toContain('<br>');
       });
@@ -643,30 +399,13 @@ describe('AI Module', () => {
           descriptionHtml: '<p>Date: 2025-01-01 &amp; Time: 09:00</p>',
         };
 
-        fetchMock.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            choices: [{
-              message: {
-                content: JSON.stringify({
-                  events: [{
-                    title: 'test',
-                    description: 'test',
-                  }],
-                }),
-              },
-            }],
-          }),
-        });
+        fetchMock.mockResolvedValueOnce(ollamaOk({ events: [{ title: 'test', description: 'test' }] }));
 
         await generateEventInfos(mockEnv, itemWithSingleEncoded);
 
-        const callArgs = fetchMock.mock.calls[0];
-        const body = JSON.parse(callArgs[1].body);
-        const promptContent = body.messages[1].content;
-
-        // Single &amp; should be decoded to &
-        expect(promptContent).toContain('2025-01-01 & Time: 09:00');
+        const [, init] = fetchMock.mock.calls[0];
+        const body = JSON.parse(init.body);
+        expect(body.messages[1].content).toContain('2025-01-01 & Time: 09:00');
       });
 
       it('should handle mixed single and double-encoded entities', async () => {
@@ -675,32 +414,17 @@ describe('AI Module', () => {
           descriptionHtml: '<p>&lt;script&gt; and &amp;amp; and &amp;lt;tag&amp;gt;</p>',
         };
 
-        fetchMock.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            choices: [{
-              message: {
-                content: JSON.stringify({
-                  events: [{
-                    title: 'test',
-                    description: 'test',
-                  }],
-                }),
-              },
-            }],
-          }),
-        });
+        fetchMock.mockResolvedValueOnce(ollamaOk({ events: [{ title: 'test', description: 'test' }] }));
 
         await generateEventInfos(mockEnv, itemWithMixed);
 
-        const callArgs = fetchMock.mock.calls[0];
-        const body = JSON.parse(callArgs[1].body);
+        const [, init] = fetchMock.mock.calls[0];
+        const body = JSON.parse(init.body);
         const promptContent = body.messages[1].content;
 
-        // Each entity decoded exactly once
-        expect(promptContent).toContain('<script>');  // &lt; &gt; decoded once
-        expect(promptContent).toContain('&amp;');     // &amp;amp; decoded once
-        expect(promptContent).toContain('&lt;tag&gt;'); // &amp;lt; &amp;gt; decoded once
+        expect(promptContent).toContain('<script>');
+        expect(promptContent).toContain('&amp;');
+        expect(promptContent).toContain('&lt;tag&gt;');
       });
 
       it('should handle numeric entities without double-decoding', async () => {
@@ -709,29 +433,14 @@ describe('AI Module', () => {
           descriptionHtml: '<p>Café &#233; and &#x3A9; Omega</p>',
         };
 
-        fetchMock.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            choices: [{
-              message: {
-                content: JSON.stringify({
-                  events: [{
-                    title: 'test',
-                    description: 'test',
-                  }],
-                }),
-              },
-            }],
-          }),
-        });
+        fetchMock.mockResolvedValueOnce(ollamaOk({ events: [{ title: 'test', description: 'test' }] }));
 
         await generateEventInfos(mockEnv, itemWithNumeric);
 
-        const callArgs = fetchMock.mock.calls[0];
-        const body = JSON.parse(callArgs[1].body);
+        const [, init] = fetchMock.mock.calls[0];
+        const body = JSON.parse(init.body);
         const promptContent = body.messages[1].content;
 
-        // Numeric entities decoded correctly
         expect(promptContent).toContain('Café é');
         expect(promptContent).toContain('Ω Omega');
       });

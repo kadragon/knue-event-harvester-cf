@@ -7,8 +7,8 @@ import {
   formatDateForDisplay,
   calculateDaysDuration,
   splitLongEvent,
-} from '../src/index';
-import type { RssItem, AiSummary, CalendarEventInput, ProcessedRecord } from '../src/types';
+} from '../src/index.js';
+import type { RssItem, AiSummary, CalendarEventInput, ProcessedRecord } from '../src/types.js';
 
 describe('index.ts Core Functions', () => {
   describe('normalizeDate', () => {

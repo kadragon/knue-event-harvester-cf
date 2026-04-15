@@ -1,4 +1,4 @@
-import type { CalendarEventInput, ProcessedRecord, GoogleCalendarAttachment } from "../types";
+import type { CalendarEventInput, ProcessedRecord, GoogleCalendarAttachment } from "../types.js";
 
 interface ServiceAccount {
   client_email: string;

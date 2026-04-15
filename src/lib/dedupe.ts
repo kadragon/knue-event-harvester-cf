@@ -1,5 +1,5 @@
-import type { CalendarEventInput, ProcessedRecord } from "../types";
-import type { GoogleCalendarEvent } from "./calendar";
+import type { CalendarEventInput, ProcessedRecord } from "../types.js";
+import type { GoogleCalendarEvent } from "./calendar.js";
 
 export function normalizedLevenshtein(a: string, b: string): number {
   const source = a.trim().toLowerCase();

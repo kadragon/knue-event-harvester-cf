@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { htmlToText } from '../../src/lib/html';
+import { htmlToText } from '../../src/lib/html.js';
 
 describe('HTML Module', () => {
   describe('htmlToText', () => {

@@ -1,6 +1,6 @@
 // GENERATED FROM SPEC-TELEGRAM-NOTIFICATION-001
 
-import { TelegramNotificationPayload } from '../types';
+import { TelegramNotificationPayload } from '../types.js';
 
 interface Env {
   TELEGRAM_BOT_TOKEN?: string;
