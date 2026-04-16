@@ -26,3 +26,7 @@ coverage/
 
 # Serena
 .serena/
+
+# Harness runtime artifacts
+tools/.sweep-stamp
+.lock-hash

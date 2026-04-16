@@ -3,3 +3,10 @@ pre-commit:
     typecheck:
       glob: "**/*.{ts,tsx}"
       run: tsc --noEmit
+    schema-guard:
+      glob: "src/lib/state.ts"
+      run: bash .claude/hooks/pre-commit-schema-guard.sh
+commit-msg:
+  commands:
+    format:
+      run: bash .claude/hooks/commit-msg-format.sh {1}
