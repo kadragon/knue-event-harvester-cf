@@ -2,8 +2,6 @@
 
 ## Now
 
-- [ ] Fix `isMain` detection for Windows/symlinked entries — use `fileURLToPath(import.meta.url)` compared to `realpathSync(process.argv[1])` — src/index.ts:496-498
-
 ## Next
 
 ## Review Debt

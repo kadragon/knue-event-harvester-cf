@@ -29,6 +29,8 @@ import type {
 } from "./types.js";
 import { deduplicateLinks, buildAttachmentFromFile } from "./lib/utils.js";
 import { getFileType } from "./lib/preview.js";
+import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 
 interface Env extends StateEnv, CalendarEnv, AiEnv {
   SIMILARITY_THRESHOLD?: string;
@@ -539,9 +541,14 @@ async function main() {
   }
 }
 
-const isMain = process.argv[1]
-  ? new URL(import.meta.url).pathname === process.argv[1]
-  : false;
+const isMain = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(import.meta.url) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
 
 if (isMain) {
   main().catch((err) => {
