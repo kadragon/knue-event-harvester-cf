@@ -1,25 +1,30 @@
 import { DOMParser as XmldomParser } from "@xmldom/xmldom";
 import type { RssItem } from "../types.js";
 
-function textContent(node: Element | null | undefined): string {
+// KNUE RSS feeds contain literal U+FFFD in CSS font-family values inside
+// <description> (server-side data rot from an old EUC-KR→UTF-8 migration).
+// Strip it from human-readable fields; leave <link> untouched so URLs remain
+// byte-faithful.
+type TextNode = { textContent: string | null } | null | undefined;
+
+function textContent(node: TextNode): string {
   if (!node) return "";
   return (node.textContent ?? "").trim().replace(/\uFFFD+/g, "");
 }
 
-function parseXmlDocument(xml: string): ReturnType<DOMParser["parseFromString"]> {
-  if (typeof DOMParser !== "undefined") {
-    return new DOMParser().parseFromString(xml, "text/xml");
-  }
+function rawTextContent(node: TextNode): string {
+  if (!node) return "";
+  return (node.textContent ?? "").trim();
+}
+
+function parseXmlDocument(xml: string) {
   const parser = new XmldomParser({
     onError: (level: string, message: string) => {
-      // KNUE RSS feeds contain literal U+FFFD in CSS font-family values (server-side
-      // data rot from an old EUC-KR→UTF-8 migration). Suppress that specific noise;
-      // surface everything else.
       if (level === "warning" && /Unicode replacement character/i.test(message)) return;
       console.warn(`[xmldom ${level}] ${message}`);
     },
   });
-  return parser.parseFromString(xml, "text/xml") as unknown as ReturnType<DOMParser["parseFromString"]>;
+  return parser.parseFromString(xml, "text/xml");
 }
 
 function extractId(link: string): string {
@@ -40,7 +45,7 @@ export function parseRss(xml: string): RssItem[] {
 
   return items.map((item) => {
     const title = textContent(item.getElementsByTagName("title")[0]);
-    const link = textContent(item.getElementsByTagName("link")[0]);
+    const link = rawTextContent(item.getElementsByTagName("link")[0]);
     const pubDate = textContent(item.getElementsByTagName("pubDate")[0]);
     const descriptionHtml = textContent(
       item.getElementsByTagName("description")[0],
