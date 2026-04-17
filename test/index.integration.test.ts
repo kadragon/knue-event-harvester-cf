@@ -188,6 +188,63 @@ describe('Integration Tests', () => {
       vi.useRealTimers();
     });
 
+    it('Golden Principle 4: per-item errors do not abort run()', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-04-17'));
+
+      const badItem: RssItem = {
+        id: '101',
+        title: '첫번째',
+        link: 'https://www.knue.ac.kr/notice/101',
+        pubDate: '2026-04-16',
+        descriptionHtml: '<p>실패 케이스</p>',
+      };
+      const goodItem: RssItem = {
+        id: '102',
+        title: '두번째',
+        link: 'https://www.knue.ac.kr/notice/102',
+        pubDate: '2026-04-16',
+        descriptionHtml: '<p>정상 케이스</p>',
+      };
+
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve('<rss/>'),
+      });
+      (parseRss as ReturnType<typeof vi.fn>).mockReturnValue([badItem, goodItem]);
+
+      // First item explodes during summarisation; second item proceeds normally.
+      (generateSummary as ReturnType<typeof vi.fn>).mockImplementation(
+        async (_env: unknown, content: { title: string }) => {
+          if (content.title === '첫번째') throw new Error('LLM blew up');
+          return { summary: '요약', highlights: [], actionItems: [], links: [] };
+        },
+      );
+      (generateEventInfos as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          title: '행사',
+          description: '',
+          startDate: '2026-04-20',
+          endDate: '2026-04-20',
+        },
+      ]);
+      (createEvent as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'evt-102',
+        htmlLink: 'https://calendar.example/evt-102',
+      });
+
+      const stats = await run(mockEnv, [NOTICE_FEED]);
+
+      // Loop must have reached the second item despite the first one throwing.
+      expect(generateSummary).toHaveBeenCalledTimes(2);
+      expect(createEvent).toHaveBeenCalledTimes(1);
+      const createdArgs = (createEvent as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(createdArgs[3]).toEqual(expect.objectContaining({ nttNo: '102' }));
+      expect(stats.created).toBe(1);
+
+      vi.useRealTimers();
+    });
+
     it('marks 청람동정 non-event items as processed without creating a calendar event', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-04-17'));
