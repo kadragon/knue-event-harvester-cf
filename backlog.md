@@ -10,7 +10,6 @@ Items from PR #62 and #63 code review that were not resolved at merge time.
 
 ### PR #62 — migrate Cloudflare Workers to Node.js + Ollama + SQLite (2026-04-15)
 
-- [ ] [doc] Add external scheduler setup instructions (systemd / cron) to replace removed Cloudflare cron trigger — src/index.ts
 
 ### PR #63 — RSS U+FFFD fix, emoji title prefix, auto-update in run.sh (2026-04-15)
 
