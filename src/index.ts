@@ -545,7 +545,12 @@ const isMain = (() => {
   if (!process.argv[1]) return false;
   try {
     return fileURLToPath(import.meta.url) === realpathSync(process.argv[1]);
-  } catch {
+  } catch (err) {
+    // argv[1] missing is expected (e.g. bundled launcher); other errno
+    // values (EACCES, ELOOP) indicate a broken install — surface them so
+    // a silently no-op CLI doesn't masquerade as healthy.
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    console.warn("isMain: unexpected error resolving argv[1]:", err);
     return false;
   }
 })();

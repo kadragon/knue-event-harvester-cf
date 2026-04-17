@@ -81,6 +81,10 @@ export async function getProcessedRecord(
       // future reads hit the primary lookup. The raw-nttNo row is left in
       // place — it is dead data (never re-read after the namespaced row exists)
       // and deleting it would add churn with no behavioral benefit.
+      // Invariant: the early return at line 74 guarantees this block runs at
+      // most once per nttNo — subsequent reads short-circuit on the namespaced
+      // row, so there is no write amplification and no risk of overwriting
+      // newer namespaced data with stale legacy data.
       env.db
         .prepare(
           `INSERT INTO processed_items (ntt_no, event_id, processed_at, hash)

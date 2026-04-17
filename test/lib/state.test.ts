@@ -106,7 +106,15 @@ describe('State Module', () => {
         'INSERT INTO processed_items (ntt_no, event_id, processed_at, hash) VALUES (?, ?, ?, ?)',
       ).run('legacy-777', 'event-heal', '2023-02-02T00:00:00Z', 'heal-hash');
 
-      await getProcessedRecord(env, 'bbs28', 'legacy-777');
+      const result = await getProcessedRecord(env, 'bbs28', 'legacy-777');
+
+      expect(result).toEqual({
+        eventId: 'event-heal',
+        nttNo: 'legacy-777',
+        processedAt: '2023-02-02T00:00:00Z',
+        hash: 'heal-hash',
+        feedId: 'bbs28',
+      });
 
       const namespaced = db
         .prepare('SELECT event_id, processed_at, hash FROM processed_items WHERE ntt_no = ?')
