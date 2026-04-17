@@ -1,0 +1,39 @@
+# Build outputs and dependencies
+node_modules/
+dist/
+coverage/
+
+# Runtime data
+logs/
+data/
+
+# Legacy / artifact dirs
+.wrangler/
+.serena/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# Editor / OS
+.vscode/
+.fleet/
+.idea/
+
+# Archives
+*.map
+*.zip
+*.tar.gz
+
+# Secrets (never scan)
+.env
+.env.*
+
+# Lock files (source-of-truth is package.json)
+*.lock
+
+# Sweep stamp
+tools/.sweep-stamp

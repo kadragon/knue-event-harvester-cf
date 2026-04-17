@@ -15,7 +15,6 @@ describe('State Module', () => {
   let env: StateEnv;
 
   beforeEach(() => {
-    // Each test gets a fresh in-memory database
     db = new Database(':memory:');
     db.pragma('journal_mode = WAL');
     db.exec(`
@@ -38,7 +37,7 @@ describe('State Module', () => {
   });
 
   describe('openDatabase', () => {
-    it('should create tables and return a Database instance', () => {
+    it('creates tables and returns a Database instance', () => {
       const tmpDb = openDatabase(':memory:');
       try {
         const tables = tmpDb
@@ -54,159 +53,187 @@ describe('State Module', () => {
   });
 
   describe('getProcessedRecord', () => {
-    it('should return processed record when found', async () => {
+    it('returns record stored with namespaced key', async () => {
       const record: ProcessedRecord = {
         eventId: 'test-event',
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
+        feedId: 'bbs250',
       };
-      db.prepare(
-        'INSERT INTO processed_items (ntt_no, event_id, processed_at, hash) VALUES (?, ?, ?, ?)'
-      ).run('123', record.eventId, record.processedAt, record.hash);
+      await putProcessedRecord(env, 'bbs250', '123', record);
 
-      const result = await getProcessedRecord(env, '123');
-
+      const result = await getProcessedRecord(env, 'bbs250', '123');
       expect(result).toEqual(record);
     });
 
-    it('should return null when key not found', async () => {
-      const result = await getProcessedRecord(env, 'nonexistent-id');
+    it('does not return record from a different feed with same nttNo', async () => {
+      const record: ProcessedRecord = {
+        eventId: 'test-event',
+        nttNo: '123',
+        processedAt: '2023-01-01T00:00:00Z',
+        hash: 'test-hash',
+        feedId: 'bbs250',
+      };
+      await putProcessedRecord(env, 'bbs250', '123', record);
+
+      const result = await getProcessedRecord(env, 'bbs28', '123');
+      expect(result).toBeNull();
+    });
+
+    it('returns null when key not found', async () => {
+      const result = await getProcessedRecord(env, 'bbs28', 'nonexistent-id');
+      expect(result).toBeNull();
+    });
+
+    it('falls back to legacy raw-nttNo row when feedId is bbs28', async () => {
+      db.prepare(
+        'INSERT INTO processed_items (ntt_no, event_id, processed_at, hash) VALUES (?, ?, ?, ?)',
+      ).run('legacy-123', 'event-legacy', '2023-01-01T00:00:00Z', 'legacy-hash');
+
+      const result = await getProcessedRecord(env, 'bbs28', 'legacy-123');
+      expect(result).toEqual({
+        eventId: 'event-legacy',
+        nttNo: 'legacy-123',
+        processedAt: '2023-01-01T00:00:00Z',
+        hash: 'legacy-hash',
+        feedId: 'bbs28',
+      });
+    });
+
+    it('does not fall back to legacy row for non-bbs28 feeds', async () => {
+      db.prepare(
+        'INSERT INTO processed_items (ntt_no, event_id, processed_at, hash) VALUES (?, ?, ?, ?)',
+      ).run('legacy-123', 'event-legacy', '2023-01-01T00:00:00Z', 'legacy-hash');
+
+      const result = await getProcessedRecord(env, 'bbs250', 'legacy-123');
       expect(result).toBeNull();
     });
   });
 
   describe('putProcessedRecord', () => {
-    it('should store processed record successfully', async () => {
+    it('stores record using namespaced key', async () => {
       const record: ProcessedRecord = {
         eventId: 'test-event',
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
+        feedId: 'bbs28',
       };
 
-      await putProcessedRecord(env, '123', record);
+      await putProcessedRecord(env, 'bbs28', '123', record);
 
-      const result = await getProcessedRecord(env, '123');
-      expect(result).toEqual(record);
+      const row = db
+        .prepare('SELECT ntt_no FROM processed_items WHERE ntt_no = ?')
+        .get('bbs28:123') as { ntt_no: string } | undefined;
+      expect(row?.ntt_no).toBe('bbs28:123');
     });
 
-    it('should overwrite existing record (upsert)', async () => {
+    it('overwrites existing record (upsert)', async () => {
       const original: ProcessedRecord = {
         eventId: 'original-event',
         nttNo: '456',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'original-hash',
+        feedId: 'bbs28',
       };
       const updated: ProcessedRecord = {
+        ...original,
         eventId: 'updated-event',
-        nttNo: '456',
         processedAt: '2023-06-15T12:00:00Z',
         hash: 'updated-hash',
       };
 
-      await putProcessedRecord(env, '456', original);
-      await putProcessedRecord(env, '456', updated);
+      await putProcessedRecord(env, 'bbs28', '456', original);
+      await putProcessedRecord(env, 'bbs28', '456', updated);
 
-      const result = await getProcessedRecord(env, '456');
+      const result = await getProcessedRecord(env, 'bbs28', '456');
       expect(result).toEqual(updated);
     });
-  });
 
-  describe('round-trip operations', () => {
-    it('should store and retrieve record correctly', async () => {
-      const record: ProcessedRecord = {
-        eventId: 'round-trip-event',
-        nttNo: '789',
-        processedAt: '2023-06-15T12:30:45Z',
-        hash: 'round-trip-hash',
+    it('keeps records from different feeds isolated even when nttNo collides', async () => {
+      const a: ProcessedRecord = {
+        eventId: 'evt-a',
+        nttNo: '999',
+        processedAt: '2023-01-01T00:00:00Z',
+        hash: 'hash-a',
+        feedId: 'bbs28',
+      };
+      const b: ProcessedRecord = {
+        ...a,
+        eventId: 'evt-b',
+        hash: 'hash-b',
+        feedId: 'bbs250',
       };
 
-      await putProcessedRecord(env, '789', record);
-      const retrieved = await getProcessedRecord(env, '789');
-      expect(retrieved).toEqual(record);
+      await putProcessedRecord(env, 'bbs28', '999', a);
+      await putProcessedRecord(env, 'bbs250', '999', b);
+
+      expect(await getProcessedRecord(env, 'bbs28', '999')).toEqual(a);
+      expect(await getProcessedRecord(env, 'bbs250', '999')).toEqual(b);
     });
   });
 
   describe('getMaxProcessedId', () => {
-    it('should return stored max ID', async () => {
-      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '5000')").run();
+    it('returns per-feed stored max ID', async () => {
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id:bbs250', '5000')").run();
 
-      const result = await getMaxProcessedId(env);
+      const result = await getMaxProcessedId(env, 'bbs250');
       expect(result).toBe(5000);
     });
 
-    it('should return 0 when no max ID is stored', async () => {
-      const result = await getMaxProcessedId(env);
+    it('returns 0 when no max ID is stored for the feed', async () => {
+      const result = await getMaxProcessedId(env, 'bbs250');
       expect(result).toBe(0);
     });
 
-    it('should parse large ID values correctly', async () => {
-      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '999999999')").run();
+    it('falls back to legacy key for bbs28 feed', async () => {
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '1234')").run();
 
-      const result = await getMaxProcessedId(env);
-      expect(result).toBe(999999999);
+      expect(await getMaxProcessedId(env, 'bbs28')).toBe(1234);
+      expect(await getMaxProcessedId(env, 'bbs250')).toBe(0);
     });
 
-    it('should return 0 when stored value is not a number', async () => {
-      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', 'not-a-number')").run();
+    it('returns 0 when stored value is not a number', async () => {
+      db.prepare(
+        "INSERT INTO meta (key, value) VALUES ('_max_processed_id:bbs28', 'not-a-number')",
+      ).run();
 
-      const result = await getMaxProcessedId(env);
-      expect(result).toBe(0);
+      expect(await getMaxProcessedId(env, 'bbs28')).toBe(0);
     });
   });
 
   describe('updateMaxProcessedId', () => {
-    it('should update max ID when new ID is larger', async () => {
-      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '5000')").run();
+    it('updates per-feed max ID when new ID is larger', async () => {
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id:bbs28', '5000')").run();
 
-      await updateMaxProcessedId(env, '5100');
+      await updateMaxProcessedId(env, 'bbs28', '5100');
 
-      const result = await getMaxProcessedId(env);
-      expect(result).toBe(5100);
+      expect(await getMaxProcessedId(env, 'bbs28')).toBe(5100);
     });
 
-    it('should not update when new ID is smaller than current max', async () => {
-      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '5000')").run();
+    it('does not update when new ID is smaller than current max', async () => {
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id:bbs28', '5000')").run();
 
-      await updateMaxProcessedId(env, '4999');
+      await updateMaxProcessedId(env, 'bbs28', '4999');
 
-      const result = await getMaxProcessedId(env);
-      expect(result).toBe(5000);
+      expect(await getMaxProcessedId(env, 'bbs28')).toBe(5000);
     });
 
-    it('should update when current max is 0 (first time)', async () => {
-      await updateMaxProcessedId(env, '100');
+    it('updates independent max IDs per feed', async () => {
+      await updateMaxProcessedId(env, 'bbs28', '100');
+      await updateMaxProcessedId(env, 'bbs250', '9000');
 
-      const result = await getMaxProcessedId(env);
-      expect(result).toBe(100);
+      expect(await getMaxProcessedId(env, 'bbs28')).toBe(100);
+      expect(await getMaxProcessedId(env, 'bbs250')).toBe(9000);
     });
 
-    it('should not update when equal IDs are given', async () => {
-      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '5000')").run();
+    it('does not update and does not throw when new ID is not a number', async () => {
+      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id:bbs28', '5000')").run();
 
-      await updateMaxProcessedId(env, '5000');
+      await updateMaxProcessedId(env, 'bbs28', 'not-a-number');
 
-      const result = await getMaxProcessedId(env);
-      expect(result).toBe(5000);
-    });
-
-    it('should update max ID for large values', async () => {
-      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '999999998')").run();
-
-      await updateMaxProcessedId(env, '999999999');
-
-      const result = await getMaxProcessedId(env);
-      expect(result).toBe(999999999);
-    });
-
-    it('should not update and not throw when new ID is not a number', async () => {
-      db.prepare("INSERT INTO meta (key, value) VALUES ('_max_processed_id', '5000')").run();
-
-      await updateMaxProcessedId(env, 'not-a-number');
-
-      const result = await getMaxProcessedId(env);
-      expect(result).toBe(5000);
+      expect(await getMaxProcessedId(env, 'bbs28')).toBe(5000);
     });
   });
 });

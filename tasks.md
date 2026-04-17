@@ -1,12 +1,11 @@
-## Review Backlog
+# Tasks
 
-### PR #62 — feat: migrate Cloudflare Workers to Node.js + Ollama + SQLite (2026-04-15)
+## Review backlog — PR #64 (out-of-scope polish)
 
-- [ ] [doc] Document single-instance requirement — concurrent runs can create duplicate calendar events; add to README or runbook (source: Claude) — src/lib/state.ts:65-91
-- [ ] [doc] Add external scheduler setup instructions (systemd / cron) to replace removed Cloudflare cron trigger (source: Codex) — src/index.ts
-- [ ] [debt] `isMain` detection fails on Windows and symlinked entries — use `fileURLToPath(import.meta.url)` compared to `realpathSync(process.argv[1])` (source: Claude) — src/index.ts:496-498
+Deferred from dev-review-cycle on 2026-04-17. Cross-feed ingestion is shipping; these are quality-of-life improvements for the multi-feed path.
 
-### PR #63 — RSS U+FFFD fix, emoji title prefix, auto-update in run.sh (2026-04-15)
-
-- [ ] [debt] `DOMParser` (browser) path in `parseXmlDocument` skips `onError` suppression — U+FFFD warnings surface in non-Node runtimes; consider dropping the browser branch or documenting the limitation (source: Claude) — src/lib/rss.ts:10-12
-- [ ] [debt] U+FFFD stripping in `textContent()` also applies to `<link>` field — consider restricting to title/description if raw link preservation matters (source: Claude) — src/lib/rss.ts:6
+- [ ] **Self-heal legacy rows on read** — `src/lib/state.ts:getProcessedRecord`. When the legacy fallback hits a pre-namespace row, rewrite it under `makeKey(LEGACY_FEED_ID, nttNo)` so the fallback branch can eventually be removed without a migration framework.
+- [ ] **Single source for `LEGACY_FEED_ID`** — `src/lib/state.ts:10` duplicates the string defined in `FEEDS[0].id` (`src/index.ts:41`). Pick one source (e.g. reference `FEEDS[0].id` from state, or import `LEGACY_FEED_ID` when declaring `FEEDS`) so a rename of the legacy feed cannot silently break the state fallback.
+- [ ] **Make `ProcessedRecord.feedId` required** — `src/types.ts:53`. All production call sites now set it; tightening the type catches future omissions at compile time. Touches `test/lib/calendar.test.ts` and `test/lib/state.test.ts` fixtures.
+- [ ] **Replace positional assertions in integration test** — `test/index.integration.test.ts:206-209`. Swap `lastCall[1] === 'bbs250'` for `expect(putProcessedRecord).toHaveBeenCalledWith(expect.anything(), 'bbs250', '777', expect.objectContaining({ feedId: 'bbs250' }))`.
+- [ ] **Harness: Gemini review script fails on macOS** — `kadragon-tools:dev-review-cycle/scripts/gemini-review.sh` uses GNU `timeout`, which is absent by default on macOS. Not a repo issue, but skipped Gemini's review on this cycle. Either install `coreutils` locally or patch the script upstream (`gtimeout`/`perl -e alarm`).

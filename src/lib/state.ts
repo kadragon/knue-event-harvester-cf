@@ -7,7 +7,16 @@ export interface StateEnv {
   db: Database.Database;
 }
 
-const MAX_PROCESSED_ID_KEY = "_max_processed_id";
+export const LEGACY_FEED_ID = "bbs28";
+const MAX_PROCESSED_ID_KEY_PREFIX = "_max_processed_id";
+
+function makeKey(feedId: string, nttNo: string): string {
+  return `${feedId}:${nttNo}`;
+}
+
+function maxIdKey(feedId: string): string {
+  return `${MAX_PROCESSED_ID_KEY_PREFIX}:${feedId}`;
+}
 
 export function openDatabase(dbPath: string): Database.Database {
   mkdirSync(dirname(dbPath), { recursive: true });
@@ -28,24 +37,54 @@ export function openDatabase(dbPath: string): Database.Database {
   return db;
 }
 
-export async function getProcessedRecord(env: StateEnv, id: string): Promise<ProcessedRecord | null> {
-  const row = env.db
-    .prepare<[string], { ntt_no: string; event_id: string; processed_at: string; hash: string }>(
-      "SELECT ntt_no, event_id, processed_at, hash FROM processed_items WHERE ntt_no = ?"
-    )
-    .get(id);
-  if (!row) return null;
+type Row = { ntt_no: string; event_id: string; processed_at: string; hash: string };
+
+function rowToRecord(row: Row, feedId: string, nttNo: string): ProcessedRecord {
   return {
-    nttNo: row.ntt_no,
+    nttNo,
     eventId: row.event_id,
     processedAt: row.processed_at,
     hash: row.hash,
+    feedId,
   };
+}
+
+function readMaxId(env: StateEnv, feedId: string): number {
+  const stmt = env.db.prepare<[string], { value: string }>(
+    "SELECT value FROM meta WHERE key = ?",
+  );
+  const row = stmt.get(maxIdKey(feedId));
+  if (row) return Number.parseInt(row.value, 10) || 0;
+  if (feedId === LEGACY_FEED_ID) {
+    const legacy = stmt.get(MAX_PROCESSED_ID_KEY_PREFIX);
+    if (legacy) return Number.parseInt(legacy.value, 10) || 0;
+  }
+  return 0;
+}
+
+export async function getProcessedRecord(
+  env: StateEnv,
+  feedId: string,
+  nttNo: string,
+): Promise<ProcessedRecord | null> {
+  const stmt = env.db.prepare<[string], Row>(
+    "SELECT ntt_no, event_id, processed_at, hash FROM processed_items WHERE ntt_no = ?",
+  );
+  const namespaced = stmt.get(makeKey(feedId, nttNo));
+  if (namespaced) return rowToRecord(namespaced, feedId, nttNo);
+  // Legacy fallback: rows written before feedId namespacing stored raw nttNo
+  // and implicitly belonged to the bbs28 feed.
+  if (feedId === LEGACY_FEED_ID) {
+    const legacy = stmt.get(nttNo);
+    if (legacy) return rowToRecord(legacy, feedId, nttNo);
+  }
+  return null;
 }
 
 export async function putProcessedRecord(
   env: StateEnv,
-  id: string,
+  feedId: string,
+  nttNo: string,
   record: ProcessedRecord,
 ): Promise<void> {
   env.db
@@ -55,37 +94,34 @@ export async function putProcessedRecord(
        ON CONFLICT(ntt_no) DO UPDATE SET
          event_id     = excluded.event_id,
          processed_at = excluded.processed_at,
-         hash         = excluded.hash`
+         hash         = excluded.hash`,
     )
-    .run(id, record.eventId, record.processedAt, record.hash);
+    .run(makeKey(feedId, nttNo), record.eventId, record.processedAt, record.hash);
 }
 
-export async function getMaxProcessedId(env: StateEnv): Promise<number> {
-  const row = env.db
-    .prepare<[string], { value: string }>("SELECT value FROM meta WHERE key = ?")
-    .get(MAX_PROCESSED_ID_KEY);
-  if (!row) return 0;
-  return Number.parseInt(row.value, 10) || 0;
+export async function getMaxProcessedId(env: StateEnv, feedId: string): Promise<number> {
+  return readMaxId(env, feedId);
 }
 
-export async function updateMaxProcessedId(env: StateEnv, id: string): Promise<void> {
+export async function updateMaxProcessedId(
+  env: StateEnv,
+  feedId: string,
+  id: string,
+): Promise<void> {
   const numId = Number.parseInt(id, 10);
   if (Number.isNaN(numId)) {
     console.warn(`updateMaxProcessedId called with non-numeric id: "${id}"`);
     return;
   }
   env.db.transaction(() => {
-    const row = env.db
-      .prepare<[string], { value: string }>("SELECT value FROM meta WHERE key = ?")
-      .get(MAX_PROCESSED_ID_KEY);
-    const currentMax = row ? Number.parseInt(row.value, 10) || 0 : 0;
+    const currentMax = readMaxId(env, feedId);
     if (numId > currentMax) {
       env.db
         .prepare(
           `INSERT INTO meta (key, value) VALUES (?, ?)
-           ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
         )
-        .run(MAX_PROCESSED_ID_KEY, numId.toString());
+        .run(maxIdKey(feedId), numId.toString());
     }
   })();
 }
