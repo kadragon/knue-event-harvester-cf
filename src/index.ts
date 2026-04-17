@@ -20,6 +20,7 @@ import {
 } from "./lib/state.js";
 import type {
   CalendarEventInput,
+  FeedSource,
   ProcessedRecord,
   RssItem,
   AiSummary,
@@ -35,7 +36,18 @@ interface Env extends StateEnv, CalendarEnv, AiEnv {
   TELEGRAM_USER_ID?: string;
 }
 
-const RSS_URL = "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28";
+export const FEEDS: FeedSource[] = [
+  {
+    id: "bbs28",
+    url: "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28",
+    label: "공지사항",
+  },
+  {
+    id: "bbs250",
+    url: "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=250",
+    label: "청람동정",
+  },
+];
 
 /**
  * Build Google Calendar event URL with proper eid encoding
@@ -52,8 +64,8 @@ function buildCalendarEventUrl(eventId: string, calendarId: string): string {
   return `https://calendar.google.com/calendar/u/0/r/event?eid=${eidEncoded}`;
 }
 
-async function fetchRssFeed(): Promise<string> {
-  const response = await fetch(RSS_URL, {
+async function fetchRssFeed(url: string): Promise<string> {
+  const response = await fetch(url, {
     headers: {
       "User-Agent": "knue-event-harvester/1.0",
     },
@@ -227,6 +239,7 @@ async function fetchImageAsBase64(url: string): Promise<PreviewContent | null> {
 
 export async function processNewItem(
   env: Env,
+  feedId: string,
   item: RssItem,
   accessToken: string,
   existingEvents: GoogleCalendarEvent[],
@@ -294,6 +307,7 @@ export async function processNewItem(
         nttNo: item.id,
         processedAt: new Date().toISOString(),
         hash,
+        feedId,
       };
 
       const duplicate = await isDuplicate(existingEvents, splitEvent, {
@@ -314,11 +328,12 @@ export async function processNewItem(
 
     // If any part is duplicate, skip the entire event group
     if (hasDuplicate) {
-      await putProcessedRecord(env, item.id, {
+      await putProcessedRecord(env, feedId, item.id, {
         eventId: "duplicate-skip",
         nttNo: item.id,
         processedAt: new Date().toISOString(),
         hash: preparedEvents[0]?.hash ?? "",
+        feedId,
       });
       continue;
     }
@@ -330,6 +345,7 @@ export async function processNewItem(
     for (const prepared of preparedEvents) {
       const created = await createEvent(env, accessToken, prepared.input, prepared.meta, {
         summaryHash: prepared.hash,
+        feedId,
       }, attachments ? [attachments] : undefined);
 
       newlyCreatedEvents.push(created);
@@ -340,7 +356,7 @@ export async function processNewItem(
       const created = newlyCreatedEvents[i];
       const prepared = preparedEvents[i];
 
-      await putProcessedRecord(env, item.id, {
+      await putProcessedRecord(env, feedId, item.id, {
         ...prepared.meta,
         eventId: created.id,
       });
@@ -365,28 +381,29 @@ export async function processNewItem(
   // 의미있는 일정이 없었을 때 상태 저장 (한 번 시도 후 더 이상 재시도하지 않음)
   if (eventInputs.length === 0) {
     console.log(
-      `No meaningful events extracted for item ${item.id}, marking as processed`
+      `No meaningful events extracted for item ${item.id} (feed=${feedId}), marking as processed`
     );
-    await putProcessedRecord(env, item.id, {
+    await putProcessedRecord(env, feedId, item.id, {
       eventId: "",
       nttNo: item.id,
       processedAt: new Date().toISOString(),
       hash: "",
+      feedId,
     });
   }
 
   return createdEvents;
 }
 
-export async function run(env: Env): Promise<{ processed: number; created: number }> {
-  const rssXml = await fetchRssFeed();
-  const items = parseRss(rssXml);
+export async function run(
+  env: Env,
+  feeds: FeedSource[] = FEEDS,
+): Promise<{ processed: number; created: number }> {
   const accessToken = await obtainAccessToken(env);
   const lookbackDays = Number.parseInt(env.LOOKBACK_DAYS ?? "60", 10);
   const now = new Date();
   const start = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
   const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-  const maxProcessedId = await getMaxProcessedId(env);
   const [existing, similarityThreshold] = await Promise.all([
     listEvents(env, accessToken, {
       timeMin: start.toISOString(),
@@ -395,15 +412,40 @@ export async function run(env: Env): Promise<{ processed: number; created: numbe
     Promise.resolve(Number.parseFloat(env.SIMILARITY_THRESHOLD ?? "0.85")),
   ]);
 
+  let totalProcessed = 0;
+  let totalCreated = 0;
+
+  for (const feed of feeds) {
+    try {
+      const stats = await runFeed(env, feed, accessToken, existing, similarityThreshold);
+      totalProcessed += stats.processed;
+      totalCreated += stats.created;
+    } catch (error) {
+      console.error(`Failed to process feed ${feed.id} (${feed.url})`, error);
+    }
+  }
+
+  return { processed: totalProcessed, created: totalCreated };
+}
+
+async function runFeed(
+  env: Env,
+  feed: FeedSource,
+  accessToken: string,
+  existing: GoogleCalendarEvent[],
+  similarityThreshold: number,
+): Promise<{ processed: number; created: number }> {
+  const rssXml = await fetchRssFeed(feed.url);
+  const items = parseRss(rssXml);
+  const maxProcessedId = await getMaxProcessedId(env, feed.id);
+
   let processed = 0;
   let created = 0;
   const skippedItems: string[] = [];
   const alreadyProcessedItems: string[] = [];
-  let maxSuccessfulId = 0; // Track max successful numeric ID for batch update
+  let maxSuccessfulId = 0;
 
   for (const item of items) {
-    // Filter 1: Skip items that were already processed (based on max ID) - O(1) check
-    // RSS is newest-first; first processed item means all below are also processed → break
     const itemId = Number.parseInt(item.id, 10);
     if (!Number.isNaN(itemId) && itemId <= maxProcessedId) {
       alreadyProcessedItems.push(item.id);
@@ -411,56 +453,54 @@ export async function run(env: Env): Promise<{ processed: number; created: numbe
       break;
     }
 
-    // Filter 2: Only process items with pubDate within last 7 days
     if (!isWithinLastWeek(item.pubDate)) {
       skippedItems.push(`Item ${item.id} - pubDate ${item.pubDate}`);
       continue;
     }
 
-    // Filter 3: Fallback for non-numeric IDs to prevent reprocessing
-    // Only check KV after passing date filter to avoid unnecessary I/O on stale items
     if (Number.isNaN(itemId)) {
-      const already = await getProcessedRecord(env, item.id);
+      const already = await getProcessedRecord(env, feed.id, item.id);
       if (already) {
         alreadyProcessedItems.push(item.id);
         processed += 1;
         continue;
       }
     }
+
     try {
       const results = await processNewItem(
         env,
+        feed.id,
         item,
         accessToken,
         existing,
-        similarityThreshold
+        similarityThreshold,
       );
       processed += 1;
       created += results.length;
 
-      // Track successful numeric ID for batch update after loop completes
       if (!Number.isNaN(itemId) && itemId > maxSuccessfulId) {
         maxSuccessfulId = itemId;
       }
     } catch (error) {
-      console.error("Failed to process item", item.id, error);
+      console.error(`Failed to process item ${item.id} (feed=${feed.id})`, error);
     }
   }
 
-  // Update max processed ID only after batch completes
-  // This ensures failed items are retried in the next run, not skipped
   if (maxSuccessfulId > 0) {
-    await updateMaxProcessedId(env, maxSuccessfulId.toString());
+    await updateMaxProcessedId(env, feed.id, maxSuccessfulId.toString());
   }
 
   if (skippedItems.length > 0) {
     console.log(
-      `Skipped ${skippedItems.length} items (older than 1 week):\n${skippedItems.join("\n")}`
+      `[${feed.id}] Skipped ${skippedItems.length} items (older than 1 week):\n${skippedItems.join("\n")}`,
     );
   }
 
   if (alreadyProcessedItems.length > 0) {
-    console.log(`Already processed ${alreadyProcessedItems.length} items (max_id: ${maxProcessedId})`);
+    console.log(
+      `[${feed.id}] Already processed ${alreadyProcessedItems.length} items (max_id: ${maxProcessedId})`,
+    );
   }
 
   return { processed, created };

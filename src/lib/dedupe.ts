@@ -144,8 +144,14 @@ export async function isDuplicate(
 
   for (const event of existing) {
     // 1. Check nttNo exact match (highest priority)
+    // nttNo can collide across feeds; require feedId agreement when both sides advertise one.
+    // Legacy events (no feedId) or legacy meta (no feedId) fall through to the loose match.
     if (options.meta?.nttNo && event.extendedProperties?.private?.nttNo === options.meta.nttNo) {
-      return true;
+      const eventFeedId = event.extendedProperties?.private?.feedId;
+      const metaFeedId = options.meta.feedId;
+      if (!eventFeedId || !metaFeedId || eventFeedId === metaFeedId) {
+        return true;
+      }
     }
 
     // 2. Filter by date

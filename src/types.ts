@@ -50,6 +50,13 @@ export interface ProcessedRecord {
   nttNo: string;
   processedAt: string;
   hash: string;
+  feedId?: string;
+}
+
+export interface FeedSource {
+  id: string;
+  url: string;
+  label: string;
 }
 
 export interface GoogleCalendarAttachment {

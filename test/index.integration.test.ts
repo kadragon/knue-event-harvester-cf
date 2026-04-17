@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { run } from '../src/index.js';
-import type { RssItem } from '../src/types.js';
+import type { FeedSource, RssItem } from '../src/types.js';
 
-// Mock all external dependencies
 vi.mock('../src/lib/rss.js', () => ({
   parseRss: vi.fn(),
 }));
@@ -33,11 +32,27 @@ vi.mock('../src/lib/state.js', () => ({
   openDatabase: vi.fn(),
 }));
 
-// Import after mocking
+vi.mock('../src/lib/telegram.js', () => ({
+  sendNotification: vi.fn(),
+}));
+
 import { parseRss } from '../src/lib/rss.js';
 import { generateSummary, generateEventInfos } from '../src/lib/ai.js';
-import { obtainAccessToken, listEvents } from '../src/lib/calendar.js';
-import { getMaxProcessedId } from '../src/lib/state.js';
+import { obtainAccessToken, listEvents, createEvent } from '../src/lib/calendar.js';
+import { getMaxProcessedId, getProcessedRecord, putProcessedRecord } from '../src/lib/state.js';
+import { isDuplicate, computeHash } from '../src/lib/dedupe.js';
+
+const NOTICE_FEED: FeedSource = {
+  id: 'bbs28',
+  url: 'https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28',
+  label: '공지사항',
+};
+
+const CHEONGNAM_FEED: FeedSource = {
+  id: 'bbs250',
+  url: 'https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=250',
+  label: '청람동정',
+};
 
 describe('Integration Tests', () => {
   let mockEnv: any;
@@ -58,6 +73,13 @@ describe('Integration Tests', () => {
 
     vi.clearAllMocks();
     global.fetch = vi.fn();
+    (obtainAccessToken as ReturnType<typeof vi.fn>).mockResolvedValue('test-token');
+    (listEvents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (getMaxProcessedId as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    (getProcessedRecord as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (putProcessedRecord as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (computeHash as ReturnType<typeof vi.fn>).mockResolvedValue('hash');
+    (isDuplicate as ReturnType<typeof vi.fn>).mockResolvedValue(false);
   });
 
   afterEach(() => {
@@ -66,24 +88,19 @@ describe('Integration Tests', () => {
   });
 
   describe('run()', () => {
-    it('should process an empty RSS feed without errors', async () => {
-      const mockItems: RssItem[] = [];
-
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    it('processes an empty RSS feed without errors', async () => {
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,
         text: () => Promise.resolve('<rss><channel></channel></rss>'),
       });
-      (parseRss as ReturnType<typeof vi.fn>).mockReturnValue(mockItems);
-      (obtainAccessToken as ReturnType<typeof vi.fn>).mockResolvedValue('test-token');
-      (listEvents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-      (getMaxProcessedId as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+      (parseRss as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
-      const stats = await run(mockEnv);
+      const stats = await run(mockEnv, [NOTICE_FEED]);
 
       expect(stats).toEqual({ processed: 0, created: 0 });
     });
 
-    it('should skip items already processed (below maxProcessedId)', async () => {
+    it('skips items already processed (below maxProcessedId)', async () => {
       const mockItems: RssItem[] = [
         {
           id: '100',
@@ -94,22 +111,122 @@ describe('Integration Tests', () => {
         },
       ];
 
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,
         text: () => Promise.resolve('<rss/>'),
       });
       (parseRss as ReturnType<typeof vi.fn>).mockReturnValue(mockItems);
-      (obtainAccessToken as ReturnType<typeof vi.fn>).mockResolvedValue('test-token');
-      (listEvents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-      // maxProcessedId = 200 means item 100 is already processed
       (getMaxProcessedId as ReturnType<typeof vi.fn>).mockResolvedValue(200);
 
-      const stats = await run(mockEnv);
+      const stats = await run(mockEnv, [NOTICE_FEED]);
 
       expect(stats.processed).toBe(1);
       expect(stats.created).toBe(0);
       expect(generateSummary).not.toHaveBeenCalled();
       expect(generateEventInfos).not.toHaveBeenCalled();
+    });
+
+    it('iterates every configured feed', async () => {
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve('<rss/>'),
+      });
+      (parseRss as ReturnType<typeof vi.fn>).mockReturnValue([]);
+
+      await run(mockEnv, [NOTICE_FEED, CHEONGNAM_FEED]);
+
+      const fetchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.map(
+        ([url]) => url as string,
+      );
+      expect(fetchCalls).toContain(NOTICE_FEED.url);
+      expect(fetchCalls).toContain(CHEONGNAM_FEED.url);
+    });
+
+    it('continues processing remaining feeds when one feed fails', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-04-17'));
+
+      const goodItem: RssItem = {
+        id: '555',
+        title: '학술제 안내',
+        link: 'https://www.knue.ac.kr/notice/555',
+        pubDate: '2026-04-16',
+        descriptionHtml: '<p>행사 내용</p>',
+      };
+
+      // bbs28 fetch fails; bbs250 fetch succeeds
+      (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+        if (url.includes('bbsNo=28')) {
+          return Promise.resolve({ ok: false, status: 500, text: () => Promise.resolve('boom') });
+        }
+        return Promise.resolve({ ok: true, text: () => Promise.resolve('<rss/>') });
+      });
+      (parseRss as ReturnType<typeof vi.fn>).mockReturnValue([goodItem]);
+      (generateSummary as ReturnType<typeof vi.fn>).mockResolvedValue({
+        summary: '요약', highlights: [], actionItems: [], links: [],
+      });
+      (generateEventInfos as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          title: '학술제',
+          description: '',
+          startDate: '2026-04-20',
+          endDate: '2026-04-20',
+        },
+      ]);
+      (createEvent as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'evt-555',
+        htmlLink: 'https://calendar.example/evt-555',
+      });
+
+      const stats = await run(mockEnv, [NOTICE_FEED, CHEONGNAM_FEED]);
+
+      expect(createEvent).toHaveBeenCalledTimes(1);
+      expect(stats.processed).toBe(1);
+      expect(stats.created).toBe(1);
+
+      vi.useRealTimers();
+    });
+
+    it('marks 청람동정 non-event items as processed without creating a calendar event', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-04-17'));
+
+      const noticeOnlyItem: RssItem = {
+        id: '777',
+        title: '인사이동 안내',
+        link: 'https://www.knue.ac.kr/cheongnam/777',
+        pubDate: '2026-04-16',
+        descriptionHtml: '<p>단순 인사 동정</p>',
+      };
+
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve('<rss/>'),
+      });
+      (parseRss as ReturnType<typeof vi.fn>).mockReturnValue([noticeOnlyItem]);
+      (generateSummary as ReturnType<typeof vi.fn>).mockResolvedValue({
+        summary: '',
+        highlights: [],
+        actionItems: [],
+        links: [],
+      });
+      // LLM decides this is not an event → empty events array
+      (generateEventInfos as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      const stats = await run(mockEnv, [CHEONGNAM_FEED]);
+
+      expect(stats.processed).toBe(1);
+      expect(stats.created).toBe(0);
+      expect(createEvent).not.toHaveBeenCalled();
+
+      // State is marked so the item is not retried next run
+      const putCalls = (putProcessedRecord as ReturnType<typeof vi.fn>).mock.calls;
+      expect(putCalls.length).toBeGreaterThan(0);
+      const lastCall = putCalls[putCalls.length - 1];
+      expect(lastCall[1]).toBe('bbs250'); // feedId
+      expect(lastCall[2]).toBe('777'); // nttNo
+
+      vi.useRealTimers();
     });
   });
 });
