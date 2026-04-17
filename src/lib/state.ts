@@ -7,9 +7,8 @@ export interface StateEnv {
   db: Database.Database;
 }
 
-const LEGACY_FEED_ID = "bbs28";
+export const LEGACY_FEED_ID = "bbs28";
 const MAX_PROCESSED_ID_KEY_PREFIX = "_max_processed_id";
-const LEGACY_MAX_PROCESSED_ID_KEY = MAX_PROCESSED_ID_KEY_PREFIX;
 
 function makeKey(feedId: string, nttNo: string): string {
   return `${feedId}:${nttNo}`;
@@ -57,7 +56,7 @@ function readMaxId(env: StateEnv, feedId: string): number {
   const row = stmt.get(maxIdKey(feedId));
   if (row) return Number.parseInt(row.value, 10) || 0;
   if (feedId === LEGACY_FEED_ID) {
-    const legacy = stmt.get(LEGACY_MAX_PROCESSED_ID_KEY);
+    const legacy = stmt.get(MAX_PROCESSED_ID_KEY_PREFIX);
     if (legacy) return Number.parseInt(legacy.value, 10) || 0;
   }
   return 0;

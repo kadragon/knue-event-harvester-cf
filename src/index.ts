@@ -36,7 +36,7 @@ interface Env extends StateEnv, CalendarEnv, AiEnv {
   TELEGRAM_USER_ID?: string;
 }
 
-export const FEEDS: FeedSource[] = [
+export const FEEDS: readonly FeedSource[] = [
   {
     id: "bbs28",
     url: "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28",
@@ -397,7 +397,7 @@ export async function processNewItem(
 
 export async function run(
   env: Env,
-  feeds: FeedSource[] = FEEDS,
+  feeds: readonly FeedSource[] = FEEDS,
 ): Promise<{ processed: number; created: number }> {
   const accessToken = await obtainAccessToken(env);
   const lookbackDays = Number.parseInt(env.LOOKBACK_DAYS ?? "60", 10);

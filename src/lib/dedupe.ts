@@ -1,5 +1,6 @@
 import type { CalendarEventInput, ProcessedRecord } from "../types.js";
 import type { GoogleCalendarEvent } from "./calendar.js";
+import { LEGACY_FEED_ID } from "./state.js";
 
 export function normalizedLevenshtein(a: string, b: string): number {
   const source = a.trim().toLowerCase();
@@ -144,12 +145,15 @@ export async function isDuplicate(
 
   for (const event of existing) {
     // 1. Check nttNo exact match (highest priority)
-    // nttNo can collide across feeds; require feedId agreement when both sides advertise one.
-    // Legacy events (no feedId) or legacy meta (no feedId) fall through to the loose match.
+    // nttNo can collide across feeds; require feedId agreement when advertised.
+    // Legacy events (pre-namespacing) have no feedId and implicitly belong to the legacy
+    // feed, so they may only loose-match new items from that same legacy feed.
     if (options.meta?.nttNo && event.extendedProperties?.private?.nttNo === options.meta.nttNo) {
       const eventFeedId = event.extendedProperties?.private?.feedId;
       const metaFeedId = options.meta.feedId;
-      if (!eventFeedId || !metaFeedId || eventFeedId === metaFeedId) {
+      if (eventFeedId && metaFeedId) {
+        if (eventFeedId === metaFeedId) return true;
+      } else if (metaFeedId === LEGACY_FEED_ID) {
         return true;
       }
     }
