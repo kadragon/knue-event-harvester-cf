@@ -252,6 +252,22 @@ describe("parseRss", () => {
       expect(result[0].title).toBe("제목");
       expect(result[0].descriptionHtml).toBe("본문내용");
     });
+
+    it("should preserve U+FFFD in link field (URLs must remain byte-faithful)", () => {
+      const rss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title><![CDATA[Test]]></title>
+      <link><![CDATA[https://example.com/path\uFFFD?nttNo=3]]></link>
+      <pubDate><![CDATA[2025-10-02]]></pubDate>
+      <description><![CDATA[Desc]]></description>
+    </item>
+  </channel>
+</rss>`;
+      const result = parseRss(rss);
+      expect(result[0].link).toBe("https://example.com/path\uFFFD?nttNo=3");
+    });
   });
 
   it("should handle malformed XML gracefully", () => {

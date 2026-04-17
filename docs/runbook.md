@@ -34,6 +34,43 @@ Logs to stdout by default. Run via `run.sh` to get file-based logging.
 */15 * * * * flock -n /tmp/knue-harvester.lock bash /home/user/knue-event-harvester/run.sh
 ```
 
+### systemd timer (alternative)
+
+On systemd hosts, a user timer integrates with journald and guarantees non-overlap (`Type=oneshot` never runs concurrently with itself), so `flock` is not required.
+
+`~/.config/systemd/user/knue-harvester.service`:
+
+```ini
+[Unit]
+Description=KNUE Event Harvester
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/knue-event-harvester
+ExecStart=/usr/bin/bash %h/knue-event-harvester/run.sh
+```
+
+`~/.config/systemd/user/knue-harvester.timer`:
+
+```ini
+[Unit]
+Description=Run KNUE Event Harvester every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable: `systemctl --user daemon-reload && systemctl --user enable --now knue-harvester.timer`.
+Logs: `journalctl --user -u knue-harvester.service -f`.
+To survive logout, run `loginctl enable-linger $USER` once.
+
 ## Seeding state.db for Integration Tests
 
 The database schema is auto-initialised on first run. To create an empty database manually, run the app once with `DRY_RUN=1` if that flag is supported, or just run `node dist/index.js` — it will create `data/state.db` with the correct schema and exit after the first cycle.

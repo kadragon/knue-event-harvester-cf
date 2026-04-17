@@ -16,6 +16,7 @@ import {
   getMaxProcessedId,
   updateMaxProcessedId,
   openDatabase,
+  LEGACY_FEED_ID,
   type StateEnv,
 } from "./lib/state.js";
 import type {
@@ -28,6 +29,8 @@ import type {
 } from "./types.js";
 import { deduplicateLinks, buildAttachmentFromFile } from "./lib/utils.js";
 import { getFileType } from "./lib/preview.js";
+import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 
 interface Env extends StateEnv, CalendarEnv, AiEnv {
   SIMILARITY_THRESHOLD?: string;
@@ -38,7 +41,7 @@ interface Env extends StateEnv, CalendarEnv, AiEnv {
 
 export const FEEDS: readonly FeedSource[] = [
   {
-    id: "bbs28",
+    id: LEGACY_FEED_ID,
     url: "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28",
     label: "공지사항",
   },
@@ -538,9 +541,19 @@ async function main() {
   }
 }
 
-const isMain = process.argv[1]
-  ? new URL(import.meta.url).pathname === process.argv[1]
-  : false;
+const isMain = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(import.meta.url) === realpathSync(process.argv[1]);
+  } catch (err) {
+    // argv[1] missing is expected (e.g. bundled launcher); other errno
+    // values (EACCES, ELOOP) indicate a broken install — surface them so
+    // a silently no-op CLI doesn't masquerade as healthy.
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    console.warn("isMain: unexpected error resolving argv[1]:", err);
+    return false;
+  }
+})();
 
 if (isMain) {
   main().catch((err) => {
