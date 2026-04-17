@@ -50,7 +50,7 @@ export interface ProcessedRecord {
   nttNo: string;
   processedAt: string;
   hash: string;
-  feedId?: string;
+  feedId: string;
 }
 
 export interface FeedSource {

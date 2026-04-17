@@ -16,6 +16,7 @@ import {
   getMaxProcessedId,
   updateMaxProcessedId,
   openDatabase,
+  LEGACY_FEED_ID,
   type StateEnv,
 } from "./lib/state.js";
 import type {
@@ -38,7 +39,7 @@ interface Env extends StateEnv, CalendarEnv, AiEnv {
 
 export const FEEDS: readonly FeedSource[] = [
   {
-    id: "bbs28",
+    id: LEGACY_FEED_ID,
     url: "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28",
     label: "공지사항",
   },

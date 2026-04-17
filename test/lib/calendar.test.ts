@@ -156,6 +156,7 @@ describe('Calendar Module', () => {
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
+        feedId: 'bbs28',
       };
 
       const result = await createEvent(mockEnv, 'test-token', input, meta);
@@ -194,6 +195,7 @@ describe('Calendar Module', () => {
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
+        feedId: 'bbs28',
       };
 
       await createEvent(mockEnv, 'test-token', input, meta, { extraField: 'extraValue' });
@@ -223,6 +225,7 @@ describe('Calendar Module', () => {
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
+        feedId: 'bbs28',
       };
 
       await expect(createEvent(mockEnv, 'test-token', input, meta))
@@ -249,6 +252,7 @@ describe('Calendar Module', () => {
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
+        feedId: 'bbs28',
       };
 
       const attachments = [
@@ -291,6 +295,7 @@ describe('Calendar Module', () => {
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
+        feedId: 'bbs28',
       };
 
       await createEvent(mockEnv, 'test-token', input, meta);
@@ -323,6 +328,7 @@ describe('Calendar Module', () => {
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
+        feedId: 'bbs28',
       };
 
       await createEvent(mockEnv, 'test-token', input, meta, undefined, []);
@@ -355,6 +361,7 @@ describe('Calendar Module', () => {
         nttNo: '123',
         processedAt: '2023-01-01T00:00:00Z',
         hash: 'test-hash',
+        feedId: 'bbs28',
       };
 
       const attachments = [

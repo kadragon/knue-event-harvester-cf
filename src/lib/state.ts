@@ -76,7 +76,23 @@ export async function getProcessedRecord(
   // and implicitly belonged to the bbs28 feed.
   if (feedId === LEGACY_FEED_ID) {
     const legacy = stmt.get(nttNo);
-    if (legacy) return rowToRecord(legacy, feedId, nttNo);
+    if (legacy) {
+      // Self-heal: rewrite the pre-namespace row under the namespaced key so
+      // future reads hit the primary lookup. The raw-nttNo row is left in
+      // place — it is dead data (never re-read after the namespaced row exists)
+      // and deleting it would add churn with no behavioral benefit.
+      env.db
+        .prepare(
+          `INSERT INTO processed_items (ntt_no, event_id, processed_at, hash)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(ntt_no) DO UPDATE SET
+             event_id     = excluded.event_id,
+             processed_at = excluded.processed_at,
+             hash         = excluded.hash`,
+        )
+        .run(makeKey(feedId, nttNo), legacy.event_id, legacy.processed_at, legacy.hash);
+      return rowToRecord(legacy, feedId, nttNo);
+    }
   }
   return null;
 }

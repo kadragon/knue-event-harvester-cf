@@ -30,6 +30,7 @@ vi.mock('../src/lib/state.js', () => ({
   getMaxProcessedId: vi.fn(),
   updateMaxProcessedId: vi.fn(),
   openDatabase: vi.fn(),
+  LEGACY_FEED_ID: 'bbs28',
 }));
 
 vi.mock('../src/lib/telegram.js', () => ({
@@ -220,11 +221,12 @@ describe('Integration Tests', () => {
       expect(createEvent).not.toHaveBeenCalled();
 
       // State is marked so the item is not retried next run
-      const putCalls = (putProcessedRecord as ReturnType<typeof vi.fn>).mock.calls;
-      expect(putCalls.length).toBeGreaterThan(0);
-      const lastCall = putCalls[putCalls.length - 1];
-      expect(lastCall[1]).toBe('bbs250'); // feedId
-      expect(lastCall[2]).toBe('777'); // nttNo
+      expect(putProcessedRecord).toHaveBeenCalledWith(
+        expect.anything(),
+        'bbs250',
+        '777',
+        expect.objectContaining({ feedId: 'bbs250' }),
+      );
 
       vi.useRealTimers();
     });
