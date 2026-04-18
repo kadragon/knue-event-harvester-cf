@@ -46,7 +46,7 @@ import { isDuplicate, computeHash } from '../src/lib/dedupe.js';
 const NOTICE_FEED: FeedSource = {
   id: 'bbs28',
   url: 'https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28',
-  label: '공지사항',
+  label: '행사세미나',
 };
 
 const CHEONGNAM_FEED: FeedSource = {

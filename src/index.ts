@@ -43,7 +43,7 @@ export const FEEDS: readonly FeedSource[] = [
   {
     id: LEGACY_FEED_ID,
     url: "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28",
-    label: "공지사항",
+    label: "행사세미나",
   },
   {
     id: "bbs250",
