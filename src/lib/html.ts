@@ -87,7 +87,7 @@ export function htmlToText(html: string): string {
 
   // Process other HTML tags
   normalized = normalized
-    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\s*br\b[^>]*>/gi, "\n")
     .replace(/<\/(p|div|li)>/gi, "\n")
     .replace(/<li[^>]*>/gi, "- ")
     .replace(/\r/g, "");
