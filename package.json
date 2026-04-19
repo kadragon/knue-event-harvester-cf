@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.9",
-    "better-sqlite3": "^11.9.1",
+    "better-sqlite3": "^12.9.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
