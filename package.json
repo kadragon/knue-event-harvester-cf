@@ -15,7 +15,7 @@
     "prepare": "lefthook install"
   },
   "dependencies": {
-    "@xmldom/xmldom": "^0.9.9",
+    "@xmldom/xmldom": "^0.9.10",
     "better-sqlite3": "^12.9.0",
     "dotenv": "^17.4.2"
   },
@@ -23,9 +23,9 @@
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.4",
-    "lefthook": "^2.1.5",
+    "lefthook": "^2.1.6",
     "tsx": "^4.16.2",
-    "typescript": "^6.0.2",
+    "typescript": "^6.0.3",
     "vite": "^8.0.8",
     "vitest": "^4.0.16"
   }
