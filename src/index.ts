@@ -27,8 +27,7 @@ import type {
   AiSummary,
   PreviewContent,
 } from "./types.js";
-import { deduplicateLinks, buildAttachmentFromFile } from "./lib/utils.js";
-import { getFileType } from "./lib/preview.js";
+import { deduplicateLinks, buildAttachmentFromFile, getFileType } from "./lib/utils.js";
 import { fileURLToPath } from "node:url";
 import { realpathSync } from "node:fs";
 

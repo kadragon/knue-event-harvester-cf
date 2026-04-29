@@ -51,7 +51,6 @@ Rules that apply every message — keep the context window lean.
 
 - `src/lib/state.ts` schema is additive only — no migration framework. Dropping or renaming columns deletes `data/state.db` for all users.
 - Single-instance execution — concurrent `run.sh` invocations create duplicate Calendar events. Cron must use `flock` (see `docs/runbook.md`).
-- `src/lib/preview.ts` is not wired into `run()` — do not assume it executes.
 
 ## Language Policy
 

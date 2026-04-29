@@ -130,3 +130,15 @@ export function buildAttachmentFromFile(item: RssItem): GoogleCalendarAttachment
     title: item.attachment.filename || 'attachment',
   };
 }
+
+export type FileType = "image" | "pdf" | "hwp" | "doc" | "other";
+
+export function getFileType(filename: string | undefined): FileType {
+  if (!filename) return "other";
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  if (["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext)) return "image";
+  if (ext === "pdf") return "pdf";
+  if (["hwp", "hwpx"].includes(ext)) return "hwp";
+  if (["doc", "docx"].includes(ext)) return "doc";
+  return "other";
+}
