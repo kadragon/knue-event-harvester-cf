@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deduplicateLinks, isImageFile, buildAttachmentFromFile } from '../../src/lib/utils.js';
+import { deduplicateLinks, isImageFile, buildAttachmentFromFile, getFileType } from '../../src/lib/utils.js';
 import type { RssItem } from '../../src/types.js';
 
 describe('deduplicateLinks', () => {
@@ -144,6 +144,46 @@ describe('isImageFile', () => {
 
   it('should handle filenames with multiple dots', () => {
     expect(isImageFile('photo.backup.jpg')).toBe(true);
+  });
+});
+
+describe('getFileType', () => {
+  it('should identify image files', () => {
+    expect(getFileType('photo.jpg')).toBe('image');
+    expect(getFileType('image.PNG')).toBe('image');
+    expect(getFileType('pic.gif')).toBe('image');
+    expect(getFileType('file.jpeg')).toBe('image');
+    expect(getFileType('test.webp')).toBe('image');
+    expect(getFileType('image.bmp')).toBe('image');
+  });
+
+  it('should identify pdf files', () => {
+    expect(getFileType('document.pdf')).toBe('pdf');
+  });
+
+  it('should identify hwp files', () => {
+    expect(getFileType('doc.hwp')).toBe('hwp');
+    expect(getFileType('file.hwpx')).toBe('hwp');
+  });
+
+  it('should identify doc files', () => {
+    expect(getFileType('word.doc')).toBe('doc');
+    expect(getFileType('document.docx')).toBe('doc');
+  });
+
+  it('should return other for unknown extensions', () => {
+    expect(getFileType('file.txt')).toBe('other');
+    expect(getFileType('data.json')).toBe('other');
+    expect(getFileType('script.js')).toBe('other');
+  });
+
+  it('should return other for no filename', () => {
+    expect(getFileType(undefined)).toBe('other');
+    expect(getFileType(null as any)).toBe('other');
+  });
+
+  it('should return other for files without extension', () => {
+    expect(getFileType('filename')).toBe('other');
   });
 });
 
