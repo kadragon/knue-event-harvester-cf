@@ -44,11 +44,6 @@ export const FEEDS: readonly FeedSource[] = [
     url: "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=28",
     label: "행사세미나",
   },
-  {
-    id: "bbs250",
-    url: "https://www.knue.ac.kr/rssBbsNtt.do?bbsNo=250",
-    label: "청람동정",
-  },
 ];
 
 /**
